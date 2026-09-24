@@ -70,7 +70,7 @@ Requires Node 18+.
 
 Also worth trying in the staff window: **Add Walk-in** (token sequence continues), **Mark Priority** (jumps the ordered queue), **Pause queue** (ETA countdown freezes), and try **Call Next** while a consultation is active — it's correctly rejected.
 
-> **Note on state:** the demo runs on an in-memory engine persisted to `localStorage` and synced across tabs in the same browser (BroadcastChannel + storage events). Real state is **per browser** — two different computers won't share a queue. That's the architecture seam where Supabase Realtime plugs in for production.
+> **Note on state:** the demo runs on an in-memory engine persisted to `localStorage` and synced across tabs in the same browser (BroadcastChannel + storage events). **Configure Supabase (see below) to sync across real devices** — the sync layer is already wired end to end.
 
 ---
 
@@ -102,11 +102,26 @@ src/
 
 ---
 
+## Going live with Supabase (~10 minutes)
+
+The app ships with a local demo mode (no accounts, no keys). To make queues sync **across real devices**:
+
+1. **Create a free project** at [supabase.com](https://supabase.com) (no card needed).
+2. **Run the schema**: Supabase Dashboard → SQL Editor → paste the contents of [`supabase/schema.sql`](supabase/schema.sql) → Run. This creates all 10 tables, indexes, the realtime publication, and Row Level Security policies (a demo tier that works with the anon key, plus commented production templates).
+3. **Copy your keys**: Project Settings → API → the **Project URL** and the **anon public** key.
+4. **Configure the app** — two options:
+   - *Local:* `cp .env.example .env.local`, paste the values, restart `npm run dev`.
+   - *Vercel:* Project → Settings → Environment Variables → add `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` → redeploy.
+5. **Test cross-device**: open the app on your phone and laptop, check in as staff on one, watch the patient's live queue update on the other.
+
+> Security note: the anon key is safe to expose **because** of RLS. The demo-tier policies scope all writes to the demo clinic, forbid reading notifications except through the owning queue entry, and allow deletes only for the demo reset. When you add real auth, switch to the production policy templates in the same file.
+
 ## Roadmap to production
 
-- [ ] **Supabase backend** — tables per the schema in `src/lib/types.ts`, Row Level Security for clinic isolation, Realtime on `queue_entries`
+- [x] **Supabase backend** — schema + RLS in `supabase/schema.sql`, sync layer in `src/server/supabaseSync.ts` (pull on boot, debounced push on mutation, postgres_changes realtime)
+- [ ] **Per-action writes** — move from snapshot upserts to engine-driven single-row mutations (Phase B; current scale is fine for demos)
 - [ ] **Push notifications** — FCM/Web Push for the existing 3-tokens-away / your-turn / delay events
-- [ ] **Real SMS OTP** — Twilio/MSG91 (the first API key you'll need; everything else runs free)
+- [ ] **Real SMS OTP** — Twilio/MSG91 (the first paid API key; everything else runs free)
 - [ ] **PWA** — installable on phones, offline-friendly patient view
 
 ## Tech stack

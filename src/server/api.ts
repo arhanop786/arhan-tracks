@@ -19,6 +19,7 @@ import type {
   StaffMember,
 } from './types';
 import { db, persistDb, resetSharedDb } from './db';
+import { reseedSupabaseDemo, supabaseEnabled, wipeSupabaseDemo } from './supabaseSync';
 import {
   ApiError,
   bookAppointment,
@@ -340,8 +341,15 @@ export function apiFetchClinic(clinicId: string): Clinic {
   return c;
 }
 
-export function apiResetDemo(): void {
-  resetSharedDb();
+export async function apiResetDemo(): Promise<void> {
+  if (supabaseEnabled) {
+    // Wipe Postgres and re-seed the demo clinic so every device converges
+    // on a fresh queue after reload.
+    await wipeSupabaseDemo();
+    await reseedSupabaseDemo();
+  } else {
+    resetSharedDb();
+  }
   window.location.reload();
 }
 

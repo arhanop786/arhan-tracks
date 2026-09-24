@@ -121,7 +121,7 @@ export function Settings() {
         <button
           className="btn block"
           onClick={() => {
-            apiResetDemo();
+            void apiResetDemo();
           }}
         >
           <IconRefresh size={16} /> Reset demo data

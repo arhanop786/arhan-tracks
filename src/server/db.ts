@@ -11,6 +11,8 @@ import type {
   StaffMember,
 } from './types';
 import { buildDemo } from './seed';
+import { isoDate } from './time';
+import { pushDbToSupabase, supabaseEnabled } from './supabaseSync';
 
 /**
  * The single authoritative in-memory database.
@@ -57,15 +59,16 @@ export function nextTokenSeq(clinicId: string): number {
 }
 
 // ----------------------------------------------------------
-// Shared demo state — localStorage acts as the single
-// authoritative store across tabs (stands in for Supabase).
+// Shared state — localStorage acts as the cross-tab store in
+// demo mode; with VITE_SUPABASE_* set, every persist also
+// (debounced) upserts the DB to Postgres. See supabaseSync.ts.
 // Bump SCHEMA_VERSION to force a clean reseed.
 // ----------------------------------------------------------
 
-import { isoDate } from './time';
-
 const STORAGE_KEY = 'arhan_db_shared';
 const SCHEMA_VERSION = 10;
+
+let supabasePushTimer: ReturnType<typeof setTimeout> | null = null;
 
 export function persistDb(): void {
   if (typeof localStorage === 'undefined') return;
@@ -73,6 +76,13 @@ export function persistDb(): void {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ v: SCHEMA_VERSION, day: isoDate(), at: Date.now(), data: db }));
   } catch {
     /* quota or private mode — in-memory state still works */
+  }
+  if (supabaseEnabled) {
+    if (supabasePushTimer) clearTimeout(supabasePushTimer);
+    supabasePushTimer = setTimeout(() => {
+      supabasePushTimer = null;
+      pushDbToSupabase(db).catch((err) => console.warn('[supabase] push failed:', err));
+    }, 600);
   }
 }
 
@@ -114,5 +124,17 @@ export function resetSharedDb(): void {
   }
 }
 
-// First tab seeds and shares; later tabs hydrate the same state.
-if (!hydrateDb()) persistDb();
+// Boot. Demo mode: first tab seeds and shares; later tabs hydrate the
+// same state. Supabase mode: snapshot the pristine seed LOCALLY ONLY —
+// boot.ts pulls authoritative Postgres state before first render, and
+// this snapshot must never push (a demo seed must not overwrite live
+// server state on reload).
+if (supabaseEnabled) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ v: SCHEMA_VERSION, day: isoDate(), at: Date.now(), data: db }));
+  } catch {
+    /* ignore */
+  }
+} else if (!hydrateDb()) {
+  persistDb();
+}
