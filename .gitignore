@@ -1,0 +1,22 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Local logs & scratch
+*.log
+vite-dev.log
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Env files (future: Supabase/Twilio keys never get committed)
+.env
+.env.*
+
+# Freebuff agent workspace
+.freebuff/
