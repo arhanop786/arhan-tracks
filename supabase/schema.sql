@@ -118,9 +118,16 @@ create table if not exists public.queue_entries (
   status_history           jsonb not null default '[]',
   updated_at               timestamptz not null default now()
 );
--- seq is unique per clinic+calendar day → duplicate tokens are impossible
+-- seq is unique per clinic+calendar day → duplicate tokens are impossible.
+-- to_char(timestamptz, ...) is only STABLE (rejected in index expressions), so
+-- the day key comes from an IMMUTABLE helper — legitimate, since IST is fixed
+-- +05:30 with no DST: add the offset, then count whole UTC days.
+create or replace function public.ist_day_key(ms bigint)
+returns bigint language sql immutable parallel safe as $fn$
+  select (ms + 19800000) / 86400000
+$fn$;
 create unique index if not exists queue_day_seq_uq
-  on public.queue_entries (clinic_id, (to_char(to_timestamp(created_at/1000.0) at time zone 'Asia/Kolkata', 'YYYY-MM-DD')), seq);
+  on public.queue_entries (clinic_id, public.ist_day_key(created_at), seq);
 create index if not exists queue_clinic_status_ix on public.queue_entries (clinic_id, status);
 create index if not exists queue_patient_ix       on public.queue_entries (patient_id, created_at desc);
 
@@ -177,13 +184,24 @@ create table if not exists public.daily_stats (
 -- Broadcast row changes on these tables. In Phase B you can restrict to
 -- per-row filters; for the demo every clinic broadcasts to every listener
 -- and the client filters by clinic_id.
-alter publication supabase_realtime add table public.queue_entries;
-alter publication supabase_realtime add table public.appointments;
-alter publication supabase_realtime add table public.patients;
-alter publication supabase_realtime add table public.notifications;
-alter publication supabase_realtime add table public.queue_events;
-alter publication supabase_realtime add table public.consultations;
-alter publication supabase_realtime add table public.daily_stats;
+-- Idempotent publication: re-running the file must not error on tables
+-- that are already members.
+do $pub$
+declare t text;
+begin
+  foreach t in array array[
+    'queue_entries','appointments','patients','notifications',
+    'queue_events','consultations','daily_stats'
+  ] loop
+    if not exists (
+      select 1 from pg_publication_tables
+      where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = t
+    ) then
+      execute format('alter publication supabase_realtime add table public.%I', t);
+    end if;
+  end loop;
+end
+$pub$;
 
 -- ---------- 3. Row Level Security ----------
 alter table public.clinics       enable row level security;
@@ -196,6 +214,20 @@ alter table public.consultations enable row level security;
 alter table public.queue_events  enable row level security;
 alter table public.notifications enable row level security;
 alter table public.daily_stats   enable row level security;
+
+-- Make the policy section re-runnable: drop existing demo policies first.
+do $drop$
+declare p record;
+begin
+  for p in
+    select schemaname, tablename, policyname
+    from pg_policies
+    where schemaname = 'public' and policyname like 'demo\_anon\_%'
+  loop
+    execute format('drop policy if exists %I on %I.%I', p.policyname, p.schemaname, p.tablename);
+  end loop;
+end
+$drop$;
 
 -- ===== 3a. DEMO MODE — anon role (active) =====================
 -- Goal: the deployed app works with only the anon key, every visitor
