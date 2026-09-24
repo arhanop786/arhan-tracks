@@ -246,6 +246,11 @@ export function buildDemo(now = Date.now()): DemoConfig {
   const timelineMinutes = 130;
   const minutesIntoDay = Math.max(18, Math.floor((now - todayStart) / M) - 6);
   const scale = Math.min(1, minutesIntoDay / timelineMinutes);
+  // Every seeded timestamp lands in Postgres bigint columns; a fractional
+  // ms (e.g. when the small-hours compression scales a minute offset by
+  // 0.185) is rejected by the API as "invalid input syntax for type bigint".
+  // Round once at the source so the whole demo timeline is integer-ms.
+  const at = (ms: number): number => Math.round(ms);
   const mkEntry = (opts: {
     patientId: string;
     doctorId: string;
@@ -262,7 +267,7 @@ export function buildDemo(now = Date.now()): DemoConfig {
     // Same relative anchor as every other seed timestamp: "N minutes ago"
     // from the wall clock (scaled — see above), so check-ins stay in the
     // past and ordered before their call/start events at any time of day.
-    const checkIn = now - opts.checkInOffsetMin * scale * M;
+    const checkIn = at(now - opts.checkInOffsetMin * scale * M);
     const e: QueueEntry = {
       id: uid('q'),
       clinicId: clinic.id,
@@ -280,19 +285,19 @@ export function buildDemo(now = Date.now()): DemoConfig {
       statusHistory: [{ status: 'waiting', at: checkIn }],
     };
     if (opts.calledMinAgo !== undefined) {
-      e.calledAt = now - opts.calledMinAgo * scale * M;
+      e.calledAt = at(now - opts.calledMinAgo * scale * M);
       e.statusHistory.push({ status: 'called', at: e.calledAt });
     }
     if (opts.startedMinAgo !== undefined) {
-      e.consultationStartTime = now - opts.startedMinAgo * scale * M;
+      e.consultationStartTime = at(now - opts.startedMinAgo * scale * M);
       e.statusHistory.push({ status: 'in_progress', at: e.consultationStartTime });
     }
     if (opts.endedMinAgo !== undefined) {
-      e.consultationEndTime = now - opts.endedMinAgo * scale * M;
+      e.consultationEndTime = at(now - opts.endedMinAgo * scale * M);
       e.statusHistory.push({ status: 'done', at: e.consultationEndTime });
     }
     if (opts.pausedAtMinAgo !== undefined) {
-      e.pausedAt = now - opts.pausedAtMinAgo * scale * M;
+      e.pausedAt = at(now - opts.pausedAtMinAgo * scale * M);
     }
     return e;
   };
@@ -325,7 +330,7 @@ export function buildDemo(now = Date.now()): DemoConfig {
       durationSeconds: durMin * 60,
     });
   });
-  pushEvent('consultation_completed', 'A-001 completed — 9 min', now - 52 * scale * M);
+  pushEvent('consultation_completed', 'A-001 completed — 9 min', at(now - 52 * scale * M));
 
   // No-show
   const nsEntry = mkEntry({
@@ -336,7 +341,7 @@ export function buildDemo(now = Date.now()): DemoConfig {
     checkInOffsetMin: 48,
   });
   queue.push(nsEntry);
-  pushEvent('marked_no_show', 'A-006 marked no-show', now - 25 * scale * M, 'Priya (Reception)');
+  pushEvent('marked_no_show', 'A-006 marked no-show', at(now - 25 * scale * M), 'Priya (Reception)');
 
   // Current: in consultation
   const cur = mkEntry({
@@ -348,7 +353,7 @@ export function buildDemo(now = Date.now()): DemoConfig {
     startedMinAgo: 13,
   });
   queue.push(cur);
-  pushEvent('consultation_started', 'A-007 consultation started', now - 13 * scale * M);
+  pushEvent('consultation_started', 'A-007 consultation started', at(now - 13 * scale * M));
 
   // Called, not yet started
   const called = mkEntry({
@@ -359,7 +364,7 @@ export function buildDemo(now = Date.now()): DemoConfig {
     calledMinAgo: 1,
   });
   queue.push(called);
-  pushEvent('patient_called', 'A-008 called', now - 1 * scale * M, 'Priya (Reception)');
+  pushEvent('patient_called', 'A-008 called', at(now - 1 * scale * M), 'Priya (Reception)');
 
   // Waiting queue (includes priority patient)
   const waitingSeeds: Array<[string, boolean]> = [
@@ -377,7 +382,7 @@ export function buildDemo(now = Date.now()): DemoConfig {
     });
     queue.push(e);
   }
-  pushEvent('priority_marked', 'A-010 marked priority', now - 6 * scale * M, 'Priya (Reception)');
+  pushEvent('priority_marked', 'A-010 marked priority', at(now - 6 * scale * M), 'Priya (Reception)');
 
   // Dr Arjun: 1 done + 1 waiting (second doctor, proves multi-queue isolation)
   const arjDone = mkEntry({ patientId: 'pat_4003', doctorId: 'doc_arjun', status: 'done', checkInOffsetMin: 66, startedMinAgo: 40, endedMinAgo: 31 });
