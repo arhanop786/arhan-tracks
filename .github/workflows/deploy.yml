@@ -1,0 +1,57 @@
+# ============================================================
+# Deploy to Cloudflare Pages on every push to main.
+#
+# One-time setup (browser, ~2 minutes):
+#   1. Create an API token: https://dash.cloudflare.com/profile/api-tokens
+#      → "Create Token" → template "Cloudflare Pages — Edit".
+#   2. Repo Settings → Secrets and variables → Actions → New repository secret:
+#        CLOUDFLARE_API_TOKEN   = the token
+#        CLOUDFLARE_ACCOUNT_ID  = right-hand sidebar of any dash page
+#   3. Re-run this workflow (Actions → Deploy → Re-run), or push again.
+#      The project is created automatically on first successful run.
+#
+# Supabase env vars (optional): Settings → Secrets → variables:
+#        VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY
+#      to enable cross-device sync; without them the public deploy
+#      runs the localStorage demo, exactly like local dev.
+# ============================================================
+
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: pages-deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      deployments: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run build
+        env:
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
+
+      - name: Publish to Cloudflare Pages
+        # Pins to a known-good major; GitHub renders this tag fine.
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy dist --project-name=arhan-tracks

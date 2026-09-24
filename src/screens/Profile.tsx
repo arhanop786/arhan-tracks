@@ -9,6 +9,8 @@ import {
   IconBell, IconChevronRight, IconLogout, IconMoon, IconRefresh, IconSun, IconUser, IconWifiOff, IconWifi,
 } from '../components/icons';
 import { relativeTime } from '../lib/time';
+import { canInstall, isInstalled, onInstallAvailability, promptInstall } from '../lib/pwa';
+import { useEffect, useState as useStateR } from 'react';
 
 export function Profile() {
   const session = useSession((s) => s.session)!;
@@ -92,6 +94,7 @@ export function Settings() {
     <div className="screen">
       <Header title="Settings" onBack={() => nav.pop()} brand="patient" />
       <div className="scroll-y" style={{ flex: 1, padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <InstallRow />
         <div className="card pad row between">
           <div>
             <div className="body-strong">Dark mode</div>
@@ -199,6 +202,45 @@ export function NotifPrefs() {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function InstallRow() {
+  const toast = useUI((s) => s.toast);
+  const [, force] = useStateR(0);
+  useEffect(() => onInstallAvailability(() => force((n) => n + 1)), []);
+
+  if (isInstalled()) {
+    return (
+      <div className="card pad row between">
+        <div>
+          <div className="body-strong">Installed</div>
+          <div className="caption">Arhan Tracks runs as an app on this device</div>
+        </div>
+        <span className="chip mint">✓</span>
+      </div>
+    );
+  }
+
+  if (!canInstall()) return null;
+
+  return (
+    <div className="card pad row between">
+      <div>
+        <div className="body-strong">Install app</div>
+        <div className="caption">Add to your home screen — works offline</div>
+      </div>
+      <button
+        className="btn sm primary"
+        onClick={() => {
+          void promptInstall().then((outcome) => {
+            if (outcome === 'accepted') toast('Installing… check your home screen');
+          });
+        }}
+      >
+        Install
+      </button>
     </div>
   );
 }

@@ -122,7 +122,7 @@ The app ships with a local demo mode (no accounts, no keys). To make queues sync
 - [ ] **Per-action writes** — move from snapshot upserts to engine-driven single-row mutations (Phase B; current scale is fine for demos)
 - [ ] **Push notifications** — FCM/Web Push for the existing 3-tokens-away / your-turn / delay events
 - [ ] **Real SMS OTP** — Twilio/MSG91 (the first paid API key; everything else runs free)
-- [ ] **PWA** — installable on phones, offline-friendly patient view
+- [x] **PWA** — installable on phones (manifest + icons + iOS meta), service worker precaches the app shell for the offline patient view; `node scripts/make-icons.mjs` regenerates icons
 
 ## Tech stack
 
