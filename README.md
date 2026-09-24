@@ -109,10 +109,17 @@ The app ships with a local demo mode (no accounts, no keys). To make queues sync
 1. **Create a free project** at [supabase.com](https://supabase.com) (no card needed).
 2. **Run the schema**: Supabase Dashboard → SQL Editor → paste the contents of [`supabase/schema.sql`](supabase/schema.sql) → Run. This creates all 10 tables, indexes, the realtime publication, and Row Level Security policies (a demo tier that works with the anon key, plus commented production templates).
 3. **Copy your keys**: Project Settings → API → the **Project URL** and the **anon public** key.
-4. **Configure the app** — two options:
+4. **Configure the app** — three options:
    - *Local:* `cp .env.example .env.local`, paste the values, restart `npm run dev`.
+   - **Cloudflare Pages (the `Deploy` workflow):** repo → Settings → Secrets and variables → Actions → **Variables** tab → New repository variable, add `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`, then re-run the workflow (Actions → Deploy → Re-run). The workflow already wires both into the build.
    - *Vercel:* Project → Settings → Environment Variables → add `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` → redeploy.
 5. **Test cross-device**: open the app on your phone and laptop, check in as staff on one, watch the patient's live queue update on the other.
+
+### Deploying (Cloudflare Pages, automatic)
+
+Every push to `main` builds and publishes `dist/` to Cloudflare Pages via [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml). One-time setup: create a **Cloudflare Pages — Edit** API token and copy your Account ID, then add repository **secrets** `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` (Settings → Secrets and variables → Actions → Secrets). The first green run creates the `arhan-tracks` Pages project; the site lives at `https://arhan-tracks.pages.dev`.
+
+> The two `VITE_SUPABASE_*` values live in the **Variables** tab (not Secrets): they compile into the public JS bundle by design, and the anon key is safe to expose because of the RLS policies above. With the variables set, the live site syncs across real devices; without them it runs the localStorage demo.
 
 > Security note: the anon key is safe to expose **because** of RLS. The demo-tier policies scope all writes to the demo clinic, forbid reading notifications except through the owning queue entry, and allow deletes only for the demo reset. When you add real auth, switch to the production policy templates in the same file.
 
