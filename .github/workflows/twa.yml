@@ -79,10 +79,10 @@ jobs:
           TWA_KEY_PASSWORD: ${{ secrets.TWA_KEY_PASSWORD || 'arhan-tracks-twa' }}
 
       - name: Generate Android project from twa-manifest.json
-        run: bubblewrap update --manifest=twa --skipVersionUpgrade
+        run: bubblewrap update --manifest=twa/twa-manifest.json --skipVersionUpgrade
 
       - name: Build signed AAB + APK
-        run: bubblewrap build --manifest=twa --skipPwaValidation
+        run: bubblewrap build --manifest=twa/twa-manifest.json --skipPwaValidation
         env:
           BUBBLEWRAP_KEYSTORE_PASSWORD: ${{ secrets.TWA_KEY_PASSWORD || 'arhan-tracks-twa' }}
           BUBBLEWRAP_KEY_PASSWORD: ${{ secrets.TWA_KEY_PASSWORD || 'arhan-tracks-twa' }}
