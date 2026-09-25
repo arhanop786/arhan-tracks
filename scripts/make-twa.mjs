@@ -94,7 +94,7 @@ const twaManifest = {
   appVersionCode: 1,
   appVersionName: '1.0.0',
   shortcuts: [],
-  generatorApp: 'Bubblewrap',
+  generatorApp: 'bubblewrap-cli',
   webManifestUrl: cfg.manifestUrl,
   fallbackType: 'customtabs',
   features: { locationDelegation: { enabled: true } },

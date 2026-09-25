@@ -4,14 +4,14 @@
 # Everything happens in the cloud — no local Java/Android needed:
 #   1. Restore (or create once) the upload keystore — cached, so the
 #      Play signing fingerprint never changes between builds.
-#   2. `bubblewrap init` generates the TWA project from the LIVE web
-#      manifest at arhan-tracks.pages.dev.
-#   3. `bubblewrap build` produces twa/app-release-bundle.aab.
+#   2. `bubblewrap update` generates the Android project from the
+#      committed twa/twa-manifest.json (no interactive init).
+#   3. `bubblewrap build` produces the signed AAB + APK.
 #   4. The upload key's SHA-256 is printed for assetlinks.json.
 #
 # The AAB is attached to the workflow run — download it from
 # Actions → "Build Android AAB (Play Store)" → Artifacts and upload
-# it to the Play Console. Also update public/.well-known/assetlinks.json
+# it to the Play Console. Then update public/.well-known/assetlinks.json
 # with the printed SHA-256 so the app opens without a URL bar.
 # ============================================================
 
@@ -22,6 +22,7 @@ on:
     branches: [main]
     paths:
       - '.twa.config.json'
+      - 'twa/twa-manifest.json'
       - 'scripts/make-twa.mjs'
       - '.github/workflows/twa.yml'
       - 'public/manifest.webmanifest'
@@ -48,48 +49,48 @@ jobs:
       - name: Install Bubblewrap CLI
         run: npm install -g @bubblewrap/cli
 
+      # Bubblewrap otherwise asks interactively where the JDK/SDK live.
+      # GitHub's ubuntu runners ship both; point the config at them.
+      - name: Configure Bubblewrap (skip interactive prompts)
+        run: |
+          mkdir -p ~/.bubblewrap
+          printf '{"jdkPath":"%s","androidSdkPath":"%s"}\n' \
+            "$JAVA_HOME" "/usr/local/lib/android/sdk" > ~/.bubblewrap/config.json
+          cat ~/.bubblewrap/config.json
+
       - name: Restore upload keystore
         id: keystore
         uses: actions/cache@v4
         with:
-          path: android.keystore
+          path: twa/android.keystore
           key: twa-upload-keystore-v1
 
       - name: Create upload keystore (first run only)
         if: steps.keystore.outputs.cache-hit != 'true'
-        run: |
-          keytool -genkeypair -v \
-            -keystore android.keystore -alias android \
-            -keyalg RSA -keysize 2048 -validity 10950 \
-            -storepass "$TWA_KEY_PASSWORD" -keypass "$TWA_KEY_PASSWORD" \
-            -dname "CN=Arhan Tracks, OU=Arhan, O=Arhan, L=Bengaluru, S=Karnataka, C=IN"
+        run: >
+          keytool -genkeypair -v
+          -keystore twa/android.keystore -alias android
+          -keyalg RSA -keysize 2048 -validity 10950
+          -storepass "$TWA_KEY_PASSWORD" -keypass "$TWA_KEY_PASSWORD"
+          -dname "CN=Arhan Tracks, O=Arhan, C=IN"
         env:
           # Falls back to a repo-visible password; set the TWA_KEY_PASSWORD
           # secret to override before the first Play upload.
           TWA_KEY_PASSWORD: ${{ secrets.TWA_KEY_PASSWORD || 'arhan-tracks-twa' }}
 
-      - name: Bubblewrap init (from live web manifest)
-        run: >
-          bubblewrap init --manifest="https://arhan-tracks.pages.dev/manifest.webmanifest"
-          --directory=twa
-          --signingKeyPath=../android.keystore
-          --signingKeyAlias=android
-          --skipPwaValidation
-        env:
-          TWA_KEY_PASSWORD: ${{ secrets.TWA_KEY_PASSWORD || 'arhan-tracks-twa' }}
-          BUBBLEWRAP_KEY_PASSWORD: ${{ secrets.TWA_KEY_PASSWORD || 'arhan-tracks-twa' }}
+      - name: Generate Android project from twa-manifest.json
+        run: bubblewrap update --manifest=twa --skipVersionUpgrade
 
-      - name: Bubblewrap build (AAB)
-        run: bubblewrap build --skipPwaValidation
-        working-directory: twa
+      - name: Build signed AAB + APK
+        run: bubblewrap build --manifest=twa --skipPwaValidation
         env:
-          TWA_KEY_PASSWORD: ${{ secrets.TWA_KEY_PASSWORD || 'arhan-tracks-twa' }}
+          BUBBLEWRAP_KEYSTORE_PASSWORD: ${{ secrets.TWA_KEY_PASSWORD || 'arhan-tracks-twa' }}
           BUBBLEWRAP_KEY_PASSWORD: ${{ secrets.TWA_KEY_PASSWORD || 'arhan-tracks-twa' }}
 
       - name: Print upload key SHA-256 (for assetlinks.json)
-        run: |
-          keytool -list -v -keystore android.keystore -alias android \
-            -storepass "$TWA_KEY_PASSWORD" | grep -A1 "SHA256:" || true
+        run: >
+          keytool -list -v -keystore twa/android.keystore -alias android
+          -storepass "$TWA_KEY_PASSWORD" | grep -A1 "SHA256:" || true
         env:
           TWA_KEY_PASSWORD: ${{ secrets.TWA_KEY_PASSWORD || 'arhan-tracks-twa' }}
 

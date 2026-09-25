@@ -23,7 +23,7 @@
   "appVersionCode": 1,
   "appVersionName": "1.0.0",
   "shortcuts": [],
-  "generatorApp": "Bubblewrap",
+  "generatorApp": "bubblewrap-cli",
   "webManifestUrl": "https://arhan-tracks.pages.dev/manifest.webmanifest",
   "fallbackType": "customtabs",
   "features": {
