@@ -60,6 +60,7 @@ create table if not exists public.staff (
   phone        text not null,
   role         text not null default 'receptionist' check (role in ('receptionist','admin')),
   permissions  jsonb not null default '[]',
+  pin          text,
   created_at   timestamptz not null default now()
 );
 create unique index if not exists staff_clinic_phone_uq on public.staff (clinic_id, phone);
@@ -241,7 +242,11 @@ $drop$;
 -- ===============================================================
 
 -- Live migration for pre-existing deployments (no-op on fresh databases).
-alter table public.clinics add column if not exists admin_pin text not null default '246810';
+-- v11 shipped a shared clinics.admin_pin; per-staff PINs (v12) replace it.
+alter table public.staff add column if not exists pin text;
+update public.staff set pin = '1111' where pin is null and phone = '9000000001';
+update public.staff set pin = '2222' where pin is null and phone = '9000000002';
+update public.staff set pin = '246810' where pin is null;
 
 -- Read: clinic config + directory open to everyone in demo
 create policy "demo_anon_select_clinics"  on public.clinics      for select to anon using (true);

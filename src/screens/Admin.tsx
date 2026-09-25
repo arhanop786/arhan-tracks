@@ -6,24 +6,29 @@ import { useLive } from '../state/live';
 import { useLiveSync } from '../state/useLiveSync';
 import {
   apiAddDoctor,
+  apiAddStaff,
+  apiChangeOwnPin,
   apiCheckAdminPin,
   apiFetchClinic,
   apiFetchDoctors,
   apiFetchMe,
   apiGetTokenInfo,
-  apiIsAdminPinDefault,
+  apiListStaff,
   apiRemoveDoctor,
-  apiSetAdminPin,
+  apiRemoveStaff,
+  apiSetStaffPin,
   apiSetTokenStart,
   apiUpdateClinicSettings,
   apiUpdateDoctor,
+  apiUpdateStaff,
 } from '../server/api';
-import type { Doctor, StaffMember } from '../server/types';
+import type { Doctor, StaffMember, StaffPermission } from '../server/types';
+import { DEFAULT_STAFF_PIN } from '../server/types';
 import { Header, Field, Segmented, Sheet } from '../components/ui';
-import { IconBuilding, IconClock, IconEdit, IconList, IconLock, IconPlus, IconStethoscope, IconX } from '../components/icons';
+import { IconBuilding, IconClock, IconEdit, IconList, IconLock, IconPlus, IconStethoscope, IconUsers, IconX } from '../components/icons';
 import { fmtTime12 } from '../lib/time';
 
-type Tab = 'doctors' | 'clinic' | 'tokens';
+type Tab = 'doctors' | 'staff' | 'clinic' | 'tokens';
 
 const DAY_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 const DAY_FULL = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -76,6 +81,7 @@ export function Admin() {
     return (
       <PinGate
         clinicId={session.clinicId}
+        userId={session.userId}
         onUnlock={() => {
           sessionStorage.setItem('arhan_admin_unlocked', '1');
           setUnlocked(true);
@@ -94,6 +100,7 @@ export function Admin() {
           onChange={setTab}
           options={[
             { value: 'doctors', label: 'Doctors' },
+            { value: 'staff', label: 'Staff' },
             { value: 'clinic', label: 'Clinic' },
             { value: 'tokens', label: 'Tokens' },
           ]}
@@ -107,6 +114,7 @@ export function Admin() {
             onAdd={() => setEditing('new')}
           />
         )}
+        {tab === 'staff' && <StaffTab clinicId={session.clinicId} />}
         {tab === 'clinic' && <ClinicTab clinicId={session.clinicId} onSave={(patch, ok) => run(() => apiUpdateClinicSettings(session, patch), ok)} />}
         {tab === 'tokens' && (
           <TokensTab
@@ -158,7 +166,7 @@ export function Admin() {
 
 // ---------- PIN gate ----------
 
-function PinGate({ clinicId, onUnlock, onCancel }: { clinicId: string; onUnlock: () => void; onCancel: () => void }) {
+function PinGate({ clinicId, userId, onUnlock, onCancel }: { clinicId: string; userId: string; onUnlock: () => void; onCancel: () => void }) {
   const toast = useUI((s) => s.toast);
   const [pin, setPin] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -167,7 +175,7 @@ function PinGate({ clinicId, onUnlock, onCancel }: { clinicId: string; onUnlock:
   const submit = () => {
     setBusy(true);
     try {
-      if (apiCheckAdminPin(clinicId, pin)) {
+      if (apiCheckAdminPin(clinicId, pin, userId)) {
         onUnlock();
       } else {
         setError('Incorrect PIN — try again');
@@ -304,18 +312,320 @@ function DoctorsTab({
   );
 }
 
-// ---------- PIN management (Doctors tab, below the directory) ----------
+// ---------- staff management tab ----------
+
+const PERMISSION_LABELS: Record<StaffPermission, string> = {
+  'queue.reorder': 'Reorder queue',
+  'queue.priority': 'Mark priority',
+  'queue.pause': 'Pause queue',
+  'queue.no_show': 'Mark no-show',
+  'patient.register': 'Register patients',
+  'appointments.manage': 'Manage appointments',
+  'analytics.view': 'View analytics',
+  'doctor.controls': 'Doctor controls',
+  'staff.manage': 'Manage staff',
+};
+
+function StaffTab({ clinicId }: { clinicId: string }) {
+  const session = useSession((s) => s.session)!;
+  const toast = useUI((s) => s.toast);
+  const refresh = useLive((s) => s.refreshStaff);
+  const staff = apiListStaff(clinicId);
+  const [editing, setEditing] = useState<StaffMember | 'new' | null>(null);
+  const [removing, setRemoving] = useState<StaffMember | null>(null);
+  const [pinFor, setPinFor] = useState<StaffMember | null>(null);
+
+  const run = (fn: () => unknown, ok: string) => {
+    try {
+      fn();
+      toast(ok);
+      refresh(clinicId);
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'Action failed', 'error');
+    }
+  };
+
+  return (
+    <>
+      {staff.map((m) => (
+        <div key={m.id} className="card pad">
+          <div className="row between">
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', minWidth: 0 }}>
+              <div
+                style={{
+                  width: 38, height: 38, borderRadius: 12, flexShrink: 0,
+                  background: 'var(--indigo-50)', color: 'var(--indigo-700)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}
+              >
+                <IconUsers size={18} />
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <div className="body-strong">
+                  {m.name}
+                  {m.id === session.userId && <span className="caption" style={{ marginLeft: 6 }}>· you</span>}
+                </div>
+                <div className="caption">{m.phone} · {m.role === 'admin' ? 'Admin' : 'Reception'}</div>
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 4 }}>
+              <button className="btn sm" aria-label={`Set PIN for ${m.name}`} title="Set PIN" onClick={() => setPinFor(m)}>
+                <IconLock size={14} />
+              </button>
+              <button className="btn sm" aria-label={`Edit ${m.name}`} onClick={() => setEditing(m)}>
+                <IconEdit size={14} />
+              </button>
+              {m.id !== session.userId && (
+                <button className="btn sm danger" aria-label={`Remove ${m.name}`} onClick={() => setRemoving(m)}>
+                  <IconX size={14} />
+                </button>
+              )}
+            </div>
+          </div>
+          <div className="row" style={{ gap: 6, marginTop: 10, flexWrap: 'wrap' }}>
+            <span className="chip">{m.permissions.length} permissions</span>
+            <span className={`chip ${m.pin ? 'mint' : 'coral'}`}>{m.pin ? 'PIN set' : 'No PIN'}</span>
+          </div>
+        </div>
+      ))}
+      <button className="btn block" onClick={() => setEditing('new')}>
+        <IconPlus size={15} /> Add staff member
+      </button>
+
+      <StaffSheet
+        editing={editing}
+        onClose={() => setEditing(null)}
+        onSave={(id, input, ok) => run(() => (id ? apiUpdateStaff(session, id, input) : apiAddStaff(session, input)), ok)}
+      />
+
+      {pinFor && (
+        <StaffPinSheet
+          member={pinFor}
+          onClose={() => setPinFor(null)}
+          onSave={(pin) => {
+            run(() => apiSetStaffPin(session, pinFor.id, pin), pin === null ? 'PIN removed' : 'PIN updated');
+            setPinFor(null);
+          }}
+        />
+      )}
+
+      {removing && (
+        <Sheet open onClose={() => setRemoving(null)} title={`Remove ${removing.name}?`}>
+          <div className="caption" style={{ marginBottom: 14 }}>
+            They will lose access immediately. Queue history is unaffected.
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn block" onClick={() => setRemoving(null)}>Cancel</button>
+            <button
+              className="btn danger block"
+              onClick={() => {
+                run(() => apiRemoveStaff(session, removing.id), `${removing.name} removed`);
+                setRemoving(null);
+              }}
+            >
+              Remove
+            </button>
+          </div>
+        </Sheet>
+      )}
+    </>
+  );
+}
+
+function StaffSheet({
+  editing,
+  onClose,
+  onSave,
+}: {
+  editing: StaffMember | 'new' | null;
+  onClose: () => void;
+  onSave: (id: string | null, input: { name: string; phone: string; role: 'receptionist' | 'admin'; pin?: string; permissions: StaffPermission[] }, ok: string) => void;
+}) {
+  const isNew = editing === 'new';
+  const m = editing && editing !== 'new' ? editing : null;
+  const [form, setForm] = useState<{
+    name: string;
+    phone: string;
+    role: 'receptionist' | 'admin';
+    pin: string;
+    permissions: StaffPermission[];
+  }>({ name: '', phone: '', role: 'receptionist', pin: '', permissions: [] });
+  const [seededFor, setSeededFor] = useState<string | null>(null);
+  if (!editing && seededFor !== null) setSeededFor(null);
+  if (editing && seededFor !== (m?.id ?? 'new')) {
+    setSeededFor(m?.id ?? 'new');
+    setForm({
+      name: m?.name ?? '',
+      phone: m?.phone ?? '',
+      role: m?.role ?? 'receptionist',
+      pin: '',
+      permissions: m ? [...m.permissions] : ['patient.register', 'appointments.manage', 'queue.no_show', 'queue.pause', 'queue.priority', 'queue.reorder'],
+    });
+  }
+  if (!editing) return null;
+
+  const valid = form.name.trim().length >= 2 && form.phone.replace(/\D/g, '').length === 10;
+
+  return (
+    <Sheet open onClose={onClose} title={isNew ? 'Add staff member' : 'Edit staff member'}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <Field label="Name">
+          <input className="input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Full name" />
+        </Field>
+        <Field label="Work number">
+          <input
+            className="input"
+            inputMode="numeric"
+            value={form.phone}
+            onChange={(e) => setForm({ ...form, phone: e.target.value.replace(/\D/g, '').slice(0, 10) })}
+            placeholder="10-digit number"
+          />
+        </Field>
+        <Field label="Role">
+          <select className="select" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value as 'receptionist' | 'admin' })}>
+            <option value="receptionist">Receptionist</option>
+            <option value="admin">Admin</option>
+          </select>
+        </Field>
+        {!isNew && (
+          <Field label="PIN" hint="Leave blank to keep the current PIN">
+            <input
+              className="input"
+              inputMode="numeric"
+              value={form.pin}
+              onChange={(e) => setForm({ ...form, pin: e.target.value.replace(/\D/g, '').slice(0, 8) })}
+              placeholder="4–8 digits"
+            />
+          </Field>
+        )}
+        <Field label="Initial PIN (optional)">
+          {isNew && (
+            <input
+              className="input"
+              inputMode="numeric"
+              value={form.pin}
+              onChange={(e) => setForm({ ...form, pin: e.target.value.replace(/\D/g, '').slice(0, 8) })
+              }
+              placeholder="4–8 digits (can set later)"
+            />
+          )}
+        </Field>
+        <Field label="Permissions">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {(Object.keys(PERMISSION_LABELS) as StaffPermission[]).map((perm) => {
+              const on = form.permissions.includes(perm);
+              return (
+                <button
+                  key={perm}
+                  aria-pressed={on}
+                  className="card"
+                  style={{
+                    padding: '9px 12px', cursor: 'pointer', textAlign: 'left',
+                    border: on ? '2px solid var(--brand)' : '1px solid var(--border-app)',
+                    background: on ? 'var(--brand-soft)' : 'var(--bg-surface)',
+                  }}
+                  onClick={() =>
+                    setForm({ ...form, permissions: on ? form.permissions.filter((p) => p !== perm) : [...form.permissions, perm] })
+                  }
+                >
+                  <span className="body" style={{ fontSize: 13, fontWeight: 700 }}>{PERMISSION_LABELS[perm]}</span>
+                </button>
+              );
+            })}
+          </div>
+        </Field>
+        <button
+          className="btn primary block"
+          disabled={!valid}
+          onClick={() => {
+            onSave(
+              m?.id ?? null,
+              { name: form.name, phone: form.phone, role: form.role, permissions: form.permissions, pin: form.pin || undefined },
+              isNew ? `${form.name.trim()} added to the team` : 'Staff member updated',
+            );
+            onClose();
+          }}
+        >
+          {isNew ? 'Add staff member' : 'Save changes'}
+        </button>
+      </div>
+    </Sheet>
+  );
+}
+
+function StaffPinSheet({ member, onClose, onSave }: { member: StaffMember; onClose: () => void; onSave: (pin: string | null) => void }) {
+  const [pin, setPin] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const valid = /^\d{4,8}$/.test(pin) && pin === confirm;
+  const isSelf = member.role === 'admin';
+
+  return (
+    <Sheet open onClose={onClose} title={`PIN for ${member.name}`}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div className="caption">
+          {isSelf
+            ? 'Admin accounts always keep a PIN — it protects the Admin console.'
+            : 'The staff member signs in with this PIN. Removing it lets them sign in without one.'}
+        </div>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <Field label="New PIN">
+            <input
+              className="input"
+              type="password"
+              inputMode="numeric"
+              autoComplete="new-password"
+              value={pin}
+              onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 8))}
+              placeholder="4–8 digits"
+            />
+          </Field>
+          <Field label="Confirm">
+            <input
+              className="input"
+              type="password"
+              inputMode="numeric"
+              autoComplete="new-password"
+              value={confirm}
+              onChange={(e) => setConfirm(e.target.value.replace(/\D/g, '').slice(0, 8))}
+              placeholder="Repeat"
+            />
+          </Field>
+        </div>
+        {pin && confirm && pin !== confirm && (
+          <div className="caption" style={{ color: 'var(--coral-deep)' }}>PINs don’t match yet.</div>
+        )}
+        <div style={{ display: 'flex', gap: 8 }}>
+          {!isSelf && member.pin && (
+            <button className="btn danger block" onClick={() => onSave(null)}>
+              Remove PIN
+            </button>
+          )}
+          <button
+            className="btn primary block"
+            disabled={!valid}
+            onClick={() => onSave(pin)}
+          >
+            Set PIN
+          </button>
+        </div>
+      </div>
+    </Sheet>
+  );
+}
+
+// ---------- PIN management (own PIN; per-staff PINs live in the Staff tab) ----------
 
 function SecurityCard() {
   const session = useSession((s) => s.session)!;
   const toast = useUI((s) => s.toast);
   const refresh = useLive((s) => s.refreshStaff);
-  const isDefault = apiIsAdminPinDefault(session.clinicId);
+  const me = apiFetchMe(session) as StaffMember | null;
+  const isDefault = (me?.pin ?? DEFAULT_STAFF_PIN) === DEFAULT_STAFF_PIN;
   const [open, setOpen] = useState(false);
   const [pin, setPin] = useState('');
   const [confirm, setConfirm] = useState('');
 
-  const valid = /^\d{4,8}$/.test(pin) && pin === confirm;
+  const valid = /^\d{4,8}$/.test(pin) && pin === confirm && pin !== (me?.pin ?? '');
 
   if (!open) {
     return (
@@ -323,11 +633,11 @@ function SecurityCard() {
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
           <IconLock size={18} style={{ color: 'var(--brand)' }} />
           <div>
-            <div className="body-strong">Admin PIN</div>
+            <div className="body-strong">My PIN</div>
             <div className="caption">
               {isDefault
-                ? 'Still the shared default — change it before going live'
-                : 'Custom PIN set — protects settings on shared devices'}
+                ? 'Still the default — change it before going live'
+                : 'Custom PIN set — unlocks Admin on shared devices'}
             </div>
           </div>
         </div>
@@ -342,10 +652,10 @@ function SecurityCard() {
     <div className="card pad" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <div className="row" style={{ gap: 8 }}>
         <IconLock size={18} style={{ color: 'var(--brand)' }} />
-        <div className="body-strong">Change admin PIN</div>
+        <div className="body-strong">Change my PIN</div>
       </div>
       <div className="caption">
-        The PIN is shared across all clinic devices and unlocks the Admin console.
+        Your personal PIN signs you in and unlocks the Admin console on shared devices.
       </div>
       <div style={{ display: 'flex', gap: 10 }}>
         <Field label="New PIN">
@@ -383,8 +693,8 @@ function SecurityCard() {
           disabled={!valid}
           onClick={() => {
             try {
-              apiSetAdminPin(session, pin);
-              toast('Admin PIN updated');
+              apiChangeOwnPin(session, pin);
+              toast('Your PIN was updated');
               refresh(session.clinicId);
               setOpen(false);
               setPin('');

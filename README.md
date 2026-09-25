@@ -16,7 +16,8 @@ Arhan Tracks gives patients a live view of the clinic queue (token number, posit
 | **Staff dashboard** | Call next, start/complete consultation, no-show, walk-ins, priority marking, pause queue, move up/down — with concurrency guards and daily stats |
 | **Doctor console** | Current/next patient, start/finish, daily summary and analytics (avg consultation, avg wait, no-shows, delay) |
 | **Multi-role auth** | Patient OTP (auto-registers new patients), staff/doctor login — role-scoped views and permissions |
-| **Admin console** | In-app management of the doctor directory (add/edit/remove, working hours & days), clinic profile + opening hours + slot/consult lengths, and token settings (prefix, next number) — no Supabase dashboard needed; admin-only, syncs live to all devices |
+| **Admin console** | In-app management of the doctor directory (add/edit/remove, working hours & days), **staff accounts** (roles, per-staff PINs, granular queue/appointment permissions), clinic profile + opening hours + slot/consult lengths, and token settings (prefix, next number) — no Supabase dashboard needed; admin-only, syncs live to all devices |
+| **Per-staff PIN sign-in** | Every staff member signs in with their work number + an individual 4–8 digit PIN; 5 wrong attempts lock that account for 5 minutes; admins change anyone's PIN from the Staff tab, staff can change their own |
 
 Token numbers (`A-014`) and appointment numbers (`APPT-2026-00421`) are intentionally distinct — see the check-in flow.
 
@@ -55,8 +56,8 @@ Requires Node 18+.
 
 | Phone | Account | Lands on |
 |---|---|---|
-| `9000000001` | Priya (Reception) | Staff Dashboard — full queue controls |
-| `9000000002` | Ravi (Admin) | Staff Dashboard → **Admin** console (PIN-gated, default PIN `246810` — change it in the console's Admin PIN card) |
+| `9000000001` | Priya (Reception) | Staff Dashboard (PIN `1111`) |
+| `9000000002` | Ravi (Admin) | Staff Dashboard → **Admin** console — gated by the admin's own PIN (seed `2222`; per-staff PINs are managed in the Admin → Staff tab) |
 | `8800000001` | Dr. Meera Krishnan | Doctor Dashboard (use the **Doctor** sign-in) |
 | `8800000002` | Dr. Arjun Rao | Doctor Dashboard |
 

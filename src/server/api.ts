@@ -17,6 +17,7 @@ import type {
   Patient,
   Clinic,
   StaffMember,
+  StaffPermission,
 } from './types';
 import { db, persistDb, resetSharedDb } from './db';
 import { deleteRowFromSupabase, reseedSupabaseDemo, supabaseEnabled, wipeSupabaseDemo } from './supabaseSync';
@@ -52,9 +53,12 @@ import {
   updateClinicSettings,
   setTokenStart,
   getTokenInfo,
-  checkAdminPin,
-  setAdminPin,
-  isAdminPinDefault,
+  checkStaffPin,
+  setStaffPin,
+  addStaffMember,
+  updateStaffMember,
+  removeStaffMember,
+  listStaff,
 } from './engine';
 import { isoDate } from './time';
 import { realtime } from './realtime';
@@ -119,10 +123,13 @@ export function verifyOtp(challengeId: string, code: string): Session {
   return { role: 'patient', clinicId: patient.clinicId, userId: patient.id, name: patient.name, phone: patient.phone };
 }
 
-export function staffLogin(phoneRaw: string, clinicId: string): Session {
+export function staffLogin(phoneRaw: string, clinicId: string, pin?: string): Session {
   const phone = normalizePhone(phoneRaw);
   const staff = db.staff.find((s) => s.phone === phone && s.clinicId === clinicId);
   if (!staff) throw new ApiError('No staff account found for this number', 'not_found');
+  if (pin !== undefined && !checkStaffPin(staff, pin)) {
+    throw new ApiError('Incorrect PIN', 'bad_pin');
+  }
   return { role: 'staff', clinicId: staff.clinicId, userId: staff.id, name: staff.name, phone: staff.phone };
 }
 
@@ -134,10 +141,15 @@ export function doctorLogin(phoneRaw: string): Session {
 }
 
 /** Accepts short demo numbers so seeded staff/doctor accounts are easy to try. */
-export function staffLoginDemo(phoneRaw: string): Session {
+export function staffLoginDemo(phoneRaw: string, pin?: string): Session {
   const p = normalizePhone(phoneRaw);
   const staff = db.staff.find((s) => s.phone.endsWith(p) || p.endsWith(s.phone));
-  if (staff) return { role: 'staff', clinicId: staff.clinicId, userId: staff.id, name: staff.name, phone: staff.phone };
+  if (staff) {
+    if (pin !== undefined && !checkStaffPin(staff, pin)) {
+      throw new ApiError('Incorrect PIN', 'bad_pin');
+    }
+    return { role: 'staff', clinicId: staff.clinicId, userId: staff.id, name: staff.name, phone: staff.phone };
+  }
   const doc = db.doctors.find((d) => {
     const dp = (d as unknown as { phone?: string }).phone;
     return dp && (dp.endsWith(p) || p.endsWith(dp));
@@ -364,16 +376,43 @@ export function apiGetTokenInfo(clinicId: string) {
   return getTokenInfo(clinicId);
 }
 
-export function apiCheckAdminPin(clinicId: string, pin: string): boolean {
-  return checkAdminPin(clinicId, pin);
+/**
+ * Admin-console unlock: verifies the signed-in admin's own PIN.
+ * Kept name-compatible with the previous shared-PIN API.
+ */
+export function apiCheckAdminPin(clinicId: string, pin: string, userId?: string): boolean {
+  const staff = (userId ? db.staff.find((s) => s.id === userId) : db.staff.find((s) => s.clinicId === clinicId && s.role === 'admin')) ?? null;
+  if (!staff) throw new ApiError('No admin account found', 'not_found');
+  return checkStaffPin(staff, pin);
 }
 
-export function apiSetAdminPin(session: Session, pin: string): void {
-  setAdminPin(session, pin);
+/** Change your own PIN (any signed-in staff member). */
+export function apiChangeOwnPin(session: Session, pin: string): void {
+  if (session.role !== 'staff') throw new ApiError('Staff only', 'forbidden');
+  setStaffPin(session, session.userId, pin);
 }
 
-export function apiIsAdminPinDefault(clinicId: string): boolean {
-  return isAdminPinDefault(clinicId);
+export function apiListStaff(clinicId: string): StaffMember[] {
+  return listStaff(clinicId);
+}
+
+export function apiAddStaff(session: Session, input: Parameters<typeof addStaffMember>[1]) {
+  return addStaffMember(session, input);
+}
+
+export function apiUpdateStaff(session: Session, staffId: string, patch: Parameters<typeof updateStaffMember>[2]) {
+  return updateStaffMember(session, staffId, patch);
+}
+
+export function apiRemoveStaff(session: Session, staffId: string): void {
+  removeStaffMember(session, staffId);
+  void deleteRowFromSupabase('staff', staffId).catch((err) =>
+    console.warn('[supabase] staff delete failed:', err),
+  );
+}
+
+export function apiSetStaffPin(session: Session, staffId: string, pin: string | null): void {
+  setStaffPin(session, staffId, pin);
 }
 
 // ---------- analytics ----------

@@ -31,6 +31,7 @@ import type {
   QueueEvent,
   StaffMember,
 } from './types';
+import { DEFAULT_STAFF_PIN } from './types';
 import type { DB } from './db';
 import { buildDemo } from './seed';
 
@@ -79,7 +80,6 @@ function toClinic(r: any): Clinic {
     closeMinutes: num(r.close_minutes) || 1140,
     slotIntervalMinutes: num(r.slot_interval_minutes) || 10,
     checkinLeadMinutes: num(r.checkin_lead_minutes) || 15,
-    adminPin: typeof r.admin_pin === 'string' && r.admin_pin ? r.admin_pin : '246810',
   };
 }
 
@@ -103,6 +103,7 @@ function toStaff(r: any): StaffMember {
     phone: r.phone,
     role: r.role ?? 'receptionist',
     permissions: r.permissions ?? [],
+    pin: typeof r.pin === 'string' && r.pin ? r.pin : DEFAULT_STAFF_PIN,
   };
 }
 
@@ -326,7 +327,6 @@ export async function pushDbToSupabase(db: DB): Promise<void> {
       close_minutes: clinic.closeMinutes,
       slot_interval_minutes: clinic.slotIntervalMinutes,
       checkin_lead_minutes: clinic.checkinLeadMinutes,
-      admin_pin: clinic.adminPin,
     },
   ]);
 
@@ -354,6 +354,7 @@ export async function pushDbToSupabase(db: DB): Promise<void> {
       phone: x.phone,
       role: x.role,
       permissions: x.permissions,
+      pin: x.pin ?? DEFAULT_STAFF_PIN,
     })),
   );
 

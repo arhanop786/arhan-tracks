@@ -15,6 +15,8 @@ import type {
   StaffMember,
   StaffQueueRow,
 } from './types';
+import type { StaffRole, StaffPermission } from './types';
+import { DEFAULT_STAFF_PIN } from './types';
 import { db, nextTokenSeq, persistDb } from './db';
 import { tokenString, uid } from './ids';
 import { isoDate, timeToMinutes } from './time';
@@ -871,29 +873,29 @@ function assertAdmin(session: Session): void {
   if (session.role !== 'staff') throw new ApiError('Admin only', 'forbidden');
   const staff = getStaff(session.userId);
   if (staff.role !== 'admin') throw new ApiError('Requires an admin account', 'forbidden');
-  verifyAdminPin(session.clinicId);
+  verifyStaffPin(staff);
 }
 
-// ---------- admin PIN gate (shared across devices) ----------
+// ---------- per-staff PIN gate ----------
 
 const PIN_LIMIT = 5;
 const PIN_LOCK_MS = 5 * 60_000;
 
-/** Per-browser-attempt tracking — the PIN itself is the cross-device secret. */
+/** Attempt tracking per staff id — the PIN itself is the cross-device secret. */
 const pinAttempts = new Map<string, { count: number; lockedUntil: number }>();
 
-function pinGate(clinicId: string): { count: number; lockedUntil: number } {
-  let g = pinAttempts.get(clinicId);
+function pinGate(staffId: string): { count: number; lockedUntil: number } {
+  let g = pinAttempts.get(staffId);
   if (!g) {
     g = { count: 0, lockedUntil: 0 };
-    pinAttempts.set(clinicId, g);
+    pinAttempts.set(staffId, g);
   }
   return g;
 }
 
-/** Throws when the gate is locked; called on every admin mutation. */
-export function verifyAdminPin(clinicId: string): void {
-  const g = pinGate(clinicId);
+/** Throws when this staff member's PIN gate is locked. */
+export function verifyStaffPin(staff: StaffMember): void {
+  const g = pinGate(staff.id);
   if (g.lockedUntil > Date.now()) {
     const mins = Math.ceil((g.lockedUntil - Date.now()) / 60_000);
     throw new ApiError(`Too many incorrect attempts — try again in ${mins} min`, 'pin_locked');
@@ -901,18 +903,16 @@ export function verifyAdminPin(clinicId: string): void {
 }
 
 /**
- * Check a PIN candidate against the clinic's shared admin PIN.
- * On success the attempt counter resets; on failure it increments, and the
- * gate locks for 5 minutes after 5 consecutive failures.
+ * Check a PIN candidate against one staff member's individual PIN.
+ * 5 consecutive failures lock that account's gate for 5 minutes.
  */
-export function checkAdminPin(clinicId: string, pin: string): boolean {
-  const clinic = getClinic(clinicId);
-  const g = pinGate(clinicId);
+export function checkStaffPin(staff: StaffMember, pin: string): boolean {
+  const g = pinGate(staff.id);
   if (g.lockedUntil > Date.now()) {
     const mins = Math.ceil((g.lockedUntil - Date.now()) / 60_000);
     throw new ApiError(`Too many incorrect attempts — try again in ${mins} min`, 'pin_locked');
   }
-  if (pin === clinic.adminPin) {
+  if (pin === (staff.pin ?? DEFAULT_STAFF_PIN)) {
     g.count = 0;
     return true;
   }
@@ -925,21 +925,137 @@ export function checkAdminPin(clinicId: string, pin: string): boolean {
   return false;
 }
 
-/** Whether the shared Admin PIN has been changed from the shipped default. */
-export function isAdminPinDefault(clinicId: string): boolean {
-  return getClinic(clinicId).adminPin === '246810';
+/** Throws when the gate is locked; called on every admin mutation. */
+export function verifyAdminPin(clinicId: string): void {
+  const g = pinGate(clinicId);
+  if (g.lockedUntil > Date.now()) {
+    const mins = Math.ceil((g.lockedUntil - Date.now()) / 60_000);
+    throw new ApiError(`Too many incorrect attempts — try again in ${mins} min`, 'pin_locked');
+  }
 }
 
-export function setAdminPin(session: Session, pin: string): void {
-  assertAdmin(session);
-  const clinic = getClinic(session.clinicId);
-  const v = pin.trim();
-  if (!/^\d{4,8}$/.test(v)) throw new ApiError('PIN must be 4–8 digits', 'invalid');
-  if (v === clinic.adminPin) throw new ApiError('New PIN must be different from the current one', 'invalid');
-  clinic.adminPin = v;
-  pinAttempts.delete(clinic.id);
-  pushEvent(clinic.id, session.name, 'admin_pin_changed', 'Admin PIN updated');
+/**
+ * Admin-console unlock: checks the first admin's PIN (fallback path used
+ * before a session-specific override exists).
+ */
+export function checkAdminPin(clinicId: string, pin: string): boolean {
+  const staff = db.staff.find((s) => s.clinicId === clinicId && s.role === 'admin');
+  if (!staff) throw new ApiError('No admin account exists for this clinic', 'not_found');
+  return checkStaffPin(staff, pin);
+}
+
+/**
+ * Set or change an individual staff PIN. Rules:
+ *  • admins can set anyone's PIN (assertAdmin runs the admin's own gate)
+ *  • any signed-in staff member can change their own PIN
+ *  • the signed-in admin's own PIN can never be removed (lockout guard)
+ */
+export function setStaffPin(session: Session, staffId: string, pin: string | null): void {
+  const target = getStaff(staffId);
+  const self = session.role === 'staff' && session.userId === staffId;
+  if (!self) assertAdmin(session);
+  if (target.clinicId !== session.clinicId) throw new ApiError('Cross-clinic access denied', 'forbidden');
+
+  if (pin === null) {
+    if (target.role === 'admin') throw new ApiError('Admin accounts must keep a PIN', 'invalid');
+    target.pin = undefined;
+    pushEvent(session.clinicId, session.name, 'staff_pin_removed', `PIN removed for ${target.name}`);
+  } else {
+    const v = pin.trim();
+    if (!/^\d{4,8}$/.test(v)) throw new ApiError('PIN must be 4–8 digits', 'invalid');
+    target.pin = v;
+    pinAttempts.delete(target.id);
+    pushEvent(session.clinicId, session.name, 'staff_pin_changed', `PIN updated for ${target.name}`);
+  }
   persistDb();
+}
+
+// ---------- admin: staff management ----------
+
+const ALL_STAFF_PERMISSIONS: StaffPermission[] = [
+  'queue.reorder',
+  'queue.priority',
+  'queue.pause',
+  'queue.no_show',
+  'patient.register',
+  'appointments.manage',
+  'analytics.view',
+  'doctor.controls',
+  'staff.manage',
+];
+
+export function addStaffMember(session: Session, input: { name: string; phone: string; role: StaffRole; pin?: string; permissions?: StaffPermission[] }): StaffMember {
+  assertAdmin(session);
+  const name = input.name.trim();
+  const phone = input.phone.replace(/\D/g, '').slice(-10);
+  if (name.length < 2) throw new ApiError('Enter the staff member’s name', 'invalid');
+  if (phone.length < 10) throw new ApiError('Enter a valid 10-digit work number', 'invalid');
+  if (db.staff.some((s) => s.clinicId === session.clinicId && s.phone === phone)) {
+    throw new ApiError('That work number is already registered', 'duplicate');
+  }
+  const member: StaffMember = {
+    id: uid('staff'),
+    clinicId: session.clinicId,
+    name,
+    phone,
+    role: input.role,
+    pin: input.pin?.trim() || undefined,
+    permissions: input.permissions ?? (input.role === 'admin' ? ALL_STAFF_PERMISSIONS : ['patient.register', 'appointments.manage', 'queue.no_show', 'queue.pause', 'queue.priority', 'queue.reorder']),
+  };
+  db.staff.push(member);
+  pushEvent(session.clinicId, session.name, 'staff_added', `${member.name} (${member.role}) joined the team`);
+  persistDb();
+  return member;
+}
+
+export function updateStaffMember(session: Session, staffId: string, patch: { name?: string; phone?: string; role?: StaffRole; permissions?: StaffPermission[] }): StaffMember {
+  assertAdmin(session);
+  const member = getStaff(staffId);
+  if (member.clinicId !== session.clinicId) throw new ApiError('Cross-clinic access denied', 'forbidden');
+  if (member.role === 'admin' && (patch.role === 'receptionist' || (patch.permissions !== undefined && !patch.permissions.includes('staff.manage')))) {
+    // Never lock the last admin out of staff management.
+    const admins = db.staff.filter((s) => s.clinicId === member.clinicId && s.role === 'admin');
+    if (admins.length <= 1) throw new ApiError('Cannot demote the last admin', 'invalid_state');
+  }
+  if (patch.name !== undefined) {
+    const name = patch.name.trim();
+    if (name.length < 2) throw new ApiError('Enter the staff member’s name', 'invalid');
+    member.name = name;
+  }
+  if (patch.phone !== undefined) {
+    const phone = patch.phone.replace(/\D/g, '').slice(-10);
+    if (phone.length < 10) throw new ApiError('Enter a valid 10-digit work number', 'invalid');
+    if (db.staff.some((s) => s.clinicId === session.clinicId && s.phone === phone && s.id !== staffId)) {
+      throw new ApiError('That work number is already registered', 'duplicate');
+    }
+    member.phone = phone;
+  }
+  if (patch.role !== undefined) member.role = patch.role;
+  if (patch.permissions !== undefined) member.permissions = [...patch.permissions];
+  pushEvent(session.clinicId, session.name, 'staff_updated', `${member.name}'s profile updated`);
+  persistDb();
+  return member;
+}
+
+export function removeStaffMember(session: Session, staffId: string): void {
+  assertAdmin(session);
+  const member = getStaff(staffId);
+  if (member.clinicId !== session.clinicId) throw new ApiError('Cross-clinic access denied', 'forbidden');
+  if (staffId === session.userId) throw new ApiError('You cannot remove your own account', 'invalid');
+  const admins = db.staff.filter((s) => s.clinicId === member.clinicId && s.role === 'admin');
+  if (member.role === 'admin' && admins.length <= 1) {
+    throw new ApiError('Cannot remove the last admin account', 'invalid_state');
+  }
+  db.staff = db.staff.filter((s) => s.id !== staffId);
+  pinAttempts.delete(staffId);
+  pushEvent(member.clinicId, session.name, 'staff_removed', `${member.name} left the team`);
+  persistDb();
+}
+
+export function listStaff(clinicId: string): StaffMember[] {
+  return db.staff
+    .filter((s) => s.clinicId === clinicId)
+  .sort((a, b) => (a.role === b.role ? a.name.localeCompare(b.name) : a.role === 'admin' ? -1 : 1));
 }
 
 /** Doctor status changes: any staff member of the clinic. */

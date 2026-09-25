@@ -24,8 +24,6 @@ export interface Clinic {
   slotIntervalMinutes: number;
   /** Average check-in lead time in minutes before slot */
   checkinLeadMinutes: number;
-  /** Admin PIN for the in-app Admin console (4–8 digits), shared across devices */
-  adminPin: string;
 }
 
 export interface WorkingHours {
@@ -54,7 +52,8 @@ export type StaffPermission =
   | 'patient.register'
   | 'appointments.manage'
   | 'analytics.view'
-  | 'doctor.controls';
+  | 'doctor.controls'
+  | 'staff.manage';
 
 export interface StaffMember {
   id: string;
@@ -63,7 +62,12 @@ export interface StaffMember {
   phone: string;
   role: StaffRole;
   permissions: StaffPermission[];
+  /** Individual sign-in + Admin-console PIN (4–8 digits) */
+  pin?: string;
 }
+
+/** PIN assigned when none has been set (backfills legacy rows on pull). */
+export const DEFAULT_STAFF_PIN = '246810';
 
 export interface Patient {
   id: string;

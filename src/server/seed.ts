@@ -50,7 +50,6 @@ export function buildDemo(now = Date.now()): DemoConfig {
     closeMinutes: 19 * 60,
     slotIntervalMinutes: 10,
     checkinLeadMinutes: 15,
-    adminPin: '246810',
   };
 
   const doctors: Doctor[] = [
@@ -81,6 +80,7 @@ export function buildDemo(now = Date.now()): DemoConfig {
       name: 'Priya (Reception)',
       phone: '9000000001',
       role: 'receptionist',
+      pin: '1111',
       permissions: [
         'patient.register',
         'appointments.manage',
@@ -96,6 +96,7 @@ export function buildDemo(now = Date.now()): DemoConfig {
       name: 'Ravi (Admin)',
       phone: '9000000002',
       role: 'admin',
+      pin: '2222',
       permissions: [
         'patient.register',
         'appointments.manage',

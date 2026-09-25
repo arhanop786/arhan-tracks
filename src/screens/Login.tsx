@@ -132,12 +132,13 @@ export function StaffLogin() {
   const login = useSession((s) => s.login);
   const toast = useUI((s) => s.toast);
   const [phone, setPhone] = useState(asDoctor ? '8800000001' : '9000000001');
+  const [pin, setPin] = useState('');
   const [err, setErr] = useState('');
 
   const submit = () => {
     setErr('');
     try {
-      const session = staffLoginDemo(phone);
+      const session = staffLoginDemo(phone, asDoctor ? undefined : pin);
       if (asDoctor && session.role !== 'doctor') throw new Error('This number is not a doctor account');
       if (!asDoctor && session.role === 'doctor') throw new Error('This number is not a staff account');
       login(session);
@@ -165,20 +166,39 @@ export function StaffLogin() {
             placeholder="9000000001"
             value={phone}
             onChange={(e) => setPhone(e.target.value.replace(/[^\d]/g, ''))}
-            onKeyDown={(e) => e.key === 'Enter' && submit()}
+            onKeyDown={(e) => e.key === 'Enter' && pin.length >= 4 && submit()}
             autoFocus
           />
         </div>
+        {!asDoctor && (
+          <div className="field" style={{ marginBottom: 14 }}>
+            <span className="label">Staff PIN</span>
+            <input
+              className="input"
+              type="password"
+              inputMode="numeric"
+              autoComplete="current-password"
+              placeholder="••••"
+              value={pin}
+              onChange={(e) => {
+                setPin(e.target.value.replace(/\D/g, '').slice(0, 8));
+                setErr('');
+              }}
+              onKeyDown={(e) => e.key === 'Enter' && pin.length >= 4 && submit()}
+              style={{ textAlign: 'center', letterSpacing: 6, fontWeight: 800 }}
+            />
+          </div>
+        )}
         {err && <div className="caption text-coral" style={{ marginBottom: 10 }}>{err}</div>}
-        <button className="btn primary block" onClick={submit} disabled={phone.length < 4}>
+        <button className="btn primary block" onClick={submit} disabled={phone.length < 4 || (!asDoctor && pin.length < 4)}>
           Sign in
         </button>
         <div className="caption" style={{ marginTop: 16, lineHeight: 1.7 }}>
           <b>Demo accounts</b>
           <br />
-          Reception — 9000000001
+          Reception — 9000000001 · PIN 1111
           <br />
-          Admin — 9000000002
+          Admin — 9000000002 · PIN 2222
           <br />
           Doctor — 8800000001
         </div>
