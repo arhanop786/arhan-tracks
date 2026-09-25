@@ -20,7 +20,8 @@ export type Screen =
   | 'queue_mgmt'
   | 'doctor_dashboard'
   | 'daily_summary'
-  | 'analytics';
+  | 'analytics'
+  | 'admin';
 
 export interface NavParams {
   queueEntryId?: string;

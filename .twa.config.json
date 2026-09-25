@@ -1,0 +1,15 @@
+{
+  "manifestUrl": "https://arhan-tracks.pages.dev/manifest.webmanifest",
+  "host": "https://arhan-tracks.pages.dev",
+  "packageId": "com.arhan.tracks",
+  "name": "Arhan Tracks — Live clinic queue",
+  "launcherName": "Arhan Tracks",
+  "display": "standalone",
+  "themeColor": "#0B3B36",
+  "backgroundColor": "#F6F7F5",
+  "startUrl": "/",
+  "iconUrl": "https://arhan-tracks.pages.dev/icon-512.png",
+  "maskableIconUrl": "https://arhan-tracks.pages.dev/maskable-icon.png",
+  "directory": "twa",
+  "skipPwaValidation": true
+}

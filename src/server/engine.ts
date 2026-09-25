@@ -866,6 +866,20 @@ function assertStaff(session: Session, clinicId: string): void {
   if (staff.clinicId !== clinicId) throw new ApiError('Cross-clinic access denied', 'forbidden');
 }
 
+/** Clinic settings + doctor directory are admin-only. */
+function assertAdmin(session: Session): void {
+  if (session.role !== 'staff') throw new ApiError('Admin only', 'forbidden');
+  const staff = getStaff(session.userId);
+  if (staff.role !== 'admin') throw new ApiError('Requires an admin account', 'forbidden');
+}
+
+/** Doctor status changes: any staff member of the clinic. */
+function assertStaffOrAdmin(session: Session, clinicId: string): void {
+  if (session.role !== 'staff') throw new ApiError('Staff only', 'forbidden');
+  const staff = getStaff(session.userId);
+  if (staff.clinicId !== clinicId) throw new ApiError('Cross-clinic access denied', 'forbidden');
+}
+
 function getEntryForActor(session: Session, entryId: string): QueueEntry {
   const entry = db.queue.find((q) => q.id === entryId);
   if (!entry) throw new ApiError('Queue entry not found', 'not_found');
@@ -888,6 +902,203 @@ function firstBusyDoctor(clinicId: string): string {
   const docIds = [...new Set(today.filter((q) => ['waiting', 'called', 'in_progress', 'paused'].includes(q.status)).map((q) => q.doctorId))];
   if (docIds.length > 0) return docIds[0];
   return db.doctors.find((d) => d.clinicId === clinicId)!.id;
+}
+
+// ---------- admin: doctors ----------
+
+export interface DoctorInput {
+  clinicId: string;
+  name: string;
+  specialty: string;
+  /** "HH:MM" — "HH:MM" */
+  start: string;
+  end: string;
+  /** 0=Sun … 6=Sat */
+  days: number[];
+  phone?: string;
+}
+
+export function addDoctor(session: Session, input: DoctorInput): Doctor {
+  assertAdmin(session);
+  const name = input.name.trim();
+  if (name.length < 2) throw new ApiError('Enter the doctor’s name', 'invalid');
+  if (timeToMinutes(input.end) <= timeToMinutes(input.start)) {
+    throw new ApiError('End time must be after start time', 'invalid');
+  }
+  if (input.days.length === 0) throw new ApiError('Pick at least one working day', 'invalid');
+  const doctor: Doctor = {
+    id: uid('doc'),
+    clinicId: input.clinicId,
+    name,
+    specialty: input.specialty.trim(),
+    workingHours: { days: [...input.days].sort((a, b) => a - b), start: input.start, end: input.end },
+    status: 'available',
+    phone: input.phone?.trim() || undefined,
+  };
+  db.doctors.push(doctor);
+  pushEvent(input.clinicId, session.name, 'doctor_added', `${doctor.name} joined the directory`);
+  persistDb();
+  broadcastQueueChange(input.clinicId);
+  return doctor;
+}
+
+export function updateDoctor(session: Session, doctorId: string, patch: Partial<DoctorInput>): Doctor {
+  assertAdmin(session);
+  const doctor = getDoctor(doctorId);
+  if (patch.name !== undefined) {
+    const name = patch.name.trim();
+    if (name.length < 2) throw new ApiError('Enter the doctor’s name', 'invalid');
+    doctor.name = name;
+  }
+  if (patch.specialty !== undefined) doctor.specialty = patch.specialty.trim();
+  if (patch.start !== undefined && patch.end !== undefined) {
+    if (timeToMinutes(patch.end) <= timeToMinutes(patch.start)) {
+      throw new ApiError('End time must be after start time', 'invalid');
+    }
+    doctor.workingHours = { ...doctor.workingHours, start: patch.start, end: patch.end };
+  } else if (patch.start !== undefined) {
+    doctor.workingHours = { ...doctor.workingHours, start: patch.start };
+  } else if (patch.end !== undefined) {
+    if (timeToMinutes(patch.end) <= timeToMinutes(doctor.workingHours.start)) {
+      throw new ApiError('End time must be after start time', 'invalid');
+    }
+    doctor.workingHours = { ...doctor.workingHours, end: patch.end };
+  }
+  if (patch.days !== undefined) {
+    if (patch.days.length === 0) throw new ApiError('Pick at least one working day', 'invalid');
+    doctor.workingHours = { ...doctor.workingHours, days: [...patch.days].sort((a, b) => a - b) };
+  }
+  if (patch.phone !== undefined) doctor.phone = patch.phone.trim() || undefined;
+  pushEvent(doctor.clinicId, session.name, 'doctor_updated', `${doctor.name}'s profile updated`);
+  persistDb();
+  broadcastQueueChange(doctor.clinicId);
+  return doctor;
+}
+
+export function setDoctorStatus(session: Session, doctorId: string, status: Doctor['status']): Doctor {
+  assertStaffOrAdmin(session, getDoctor(doctorId).clinicId);
+  const doctor = getDoctor(doctorId);
+  doctor.status = status;
+  const label =
+    status === 'on_break' ? 'went on break — queue paused'
+    : status === 'available' ? 'is available — queue resumed'
+    : status === 'in_consultation' ? 'is in consultation'
+    : 'is off duty';
+  pushEvent(doctor.clinicId, session.name, 'doctor_status', `${doctor.name} ${label}`);
+  persistDb();
+  broadcastQueueChange(doctor.clinicId);
+  return doctor;
+}
+
+export function removeDoctor(session: Session, doctorId: string): void {
+  assertAdmin(session);
+  const doctor = getDoctor(doctorId);
+  const clinicId = doctor.clinicId;
+  const active = todayQueue(clinicId).filter(
+    (q) => q.doctorId === doctorId && ['waiting', 'called', 'in_progress', 'paused'].includes(q.status),
+  );
+  if (active.length > 0) {
+    throw new ApiError(`${doctor.name} has ${active.length} patient${active.length === 1 ? '' : 's'} in the queue — finish or clear them first`, 'invalid_state');
+  }
+  db.doctors = db.doctors.filter((d) => d.id !== doctorId);
+  pushEvent(clinicId, session.name, 'doctor_removed', `${doctor.name} left the directory`);
+  persistDb();
+  broadcastQueueChange(clinicId);
+}
+
+// ---------- admin: clinic settings ----------
+
+export interface ClinicSettingsInput {
+  name?: string;
+  address?: string;
+  phone?: string;
+  /** Queue letter prefix, e.g. "A" → tokens like A-014 */
+  queuePrefix?: string;
+  defaultConsultMinutes?: number;
+  /** "HH:MM" */
+  open?: string;
+  close?: string;
+  slotIntervalMinutes?: number;
+}
+
+export function updateClinicSettings(session: Session, patch: ClinicSettingsInput): Clinic {
+  assertAdmin(session);
+  const clinic = getClinic(db.clinics[0].id);
+  if (patch.name !== undefined) {
+    const name = patch.name.trim();
+    if (name.length < 2) throw new ApiError('Enter the clinic name', 'invalid');
+    clinic.name = name;
+  }
+  if (patch.address !== undefined) clinic.address = patch.address.trim();
+  if (patch.phone !== undefined) clinic.phone = patch.phone.trim();
+  if (patch.queuePrefix !== undefined) {
+    const prefix = patch.queuePrefix.trim().toUpperCase().slice(0, 2);
+    if (!/^[A-Z]+$/.test(prefix)) throw new ApiError('Prefix must be 1–2 letters (A–Z)', 'invalid');
+    clinic.queuePrefix = prefix;
+  }
+  if (patch.defaultConsultMinutes !== undefined) {
+    const v = Math.round(patch.defaultConsultMinutes);
+    if (v < 1 || v > 120) throw new ApiError('Consultation length must be 1–120 minutes', 'invalid');
+    clinic.defaultConsultMinutes = v;
+  }
+  if (patch.open !== undefined && patch.close !== undefined) {
+    const openMin = timeToMinutes(patch.open);
+    const closeMin = timeToMinutes(patch.close);
+    if (closeMin <= openMin) throw new ApiError('Closing time must be after opening time', 'invalid');
+    clinic.openMinutes = openMin;
+    clinic.closeMinutes = closeMin;
+  } else if (patch.open !== undefined) {
+    if (timeToMinutes(patch.close as string) <= timeToMinutes(patch.open)) {
+      throw new ApiError('Closing time must be after opening time', 'invalid');
+    }
+    clinic.openMinutes = timeToMinutes(patch.open);
+  } else if (patch.close !== undefined) {
+    if (timeToMinutes(patch.close) <= clinic.openMinutes) {
+      throw new ApiError('Closing time must be after opening time', 'invalid');
+    }
+    clinic.closeMinutes = timeToMinutes(patch.close);
+  }
+  if (patch.slotIntervalMinutes !== undefined) {
+    const v = Math.round(patch.slotIntervalMinutes);
+    if (v < 5 || v > 120) throw new ApiError('Slot interval must be 5–120 minutes', 'invalid');
+    clinic.slotIntervalMinutes = v;
+  }
+  pushEvent(clinic.id, session.name, 'clinic_settings_updated', 'Clinic settings updated');
+  persistDb();
+  broadcastQueueChange(clinic.id);
+  return clinic;
+}
+
+// ---------- admin: token settings ----------
+
+/**
+ * Token configuration is stored on the clinic row (prefix) plus this
+ * device-independent counter override. The next issued token continues
+ * from max(counter+1, existing max) so tokens never repeat within a day.
+ */
+export function setTokenStart(session: Session, nextNumber: number): void {
+  assertAdmin(session);
+  const clinic = getClinic(db.clinics[0].id);
+  const v = Math.round(nextNumber);
+  if (v < 1) throw new ApiError('Token number must be at least 1', 'invalid');
+  const today = todayQueue(clinic.id);
+  const maxToday = today.reduce((m, q) => Math.max(m, q.seq), 0);
+  if (v <= maxToday) {
+    throw new ApiError(`Today already used tokens up to ${maxToday} — pick a higher number`, 'invalid');
+  }
+  db.tokenSeq[clinic.id] = v - 1; // nextTokenSeq() returns v on next issue
+  pushEvent(clinic.id, session.name, 'token_start_set', `Next token set to ${clinic.queuePrefix}-${String(v).padStart(3, '0')}`);
+  persistDb();
+}
+
+export function getTokenInfo(clinicId: string): { prefix: string; nextNumber: number; issuedToday: number } {
+  const clinic = getClinic(clinicId);
+  const today = todayQueue(clinicId);
+  return {
+    prefix: clinic.queuePrefix,
+    nextNumber: (db.tokenSeq[clinicId] ?? 0) + 1,
+    issuedToday: today.length,
+  };
 }
 
 // ---------- daily stats ----------

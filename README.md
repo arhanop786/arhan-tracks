@@ -16,6 +16,7 @@ Arhan Tracks gives patients a live view of the clinic queue (token number, posit
 | **Staff dashboard** | Call next, start/complete consultation, no-show, walk-ins, priority marking, pause queue, move up/down — with concurrency guards and daily stats |
 | **Doctor console** | Current/next patient, start/finish, daily summary and analytics (avg consultation, avg wait, no-shows, delay) |
 | **Multi-role auth** | Patient OTP (auto-registers new patients), staff/doctor login — role-scoped views and permissions |
+| **Admin console** | In-app management of the doctor directory (add/edit/remove, working hours & days), clinic profile + opening hours + slot/consult lengths, and token settings (prefix, next number) — no Supabase dashboard needed; admin-only, syncs live to all devices |
 
 Token numbers (`A-014`) and appointment numbers (`APPT-2026-00421`) are intentionally distinct — see the check-in flow.
 
@@ -130,6 +131,7 @@ Every push to `main` builds and publishes `dist/` to Cloudflare Pages via [`.git
 - [ ] **Push notifications** — FCM/Web Push for the existing 3-tokens-away / your-turn / delay events
 - [ ] **Real SMS OTP** — Twilio/MSG91 (the first paid API key; everything else runs free)
 - [x] **PWA** — installable on phones (manifest + icons + iOS meta), service worker precaches the app shell for the offline patient view; `node scripts/make-icons.mjs` regenerates icons
+- [x] **Google Play distribution** — Trusted Web Activity package via `npm run twa` (bubblewrap); see [`scripts/README-play.md`](scripts/README-play.md) for the full publishing walkthrough. Play-hosted privacy policy at `/privacy.html`.
 
 ## Tech stack
 

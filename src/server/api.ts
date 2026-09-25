@@ -19,7 +19,7 @@ import type {
   StaffMember,
 } from './types';
 import { db, persistDb, resetSharedDb } from './db';
-import { reseedSupabaseDemo, supabaseEnabled, wipeSupabaseDemo } from './supabaseSync';
+import { deleteRowFromSupabase, reseedSupabaseDemo, supabaseEnabled, wipeSupabaseDemo } from './supabaseSync';
 import {
   ApiError,
   bookAppointment,
@@ -45,6 +45,13 @@ import {
   togglePriority,
   updatePatientProfile,
   getConsultationLog,
+  addDoctor,
+  updateDoctor,
+  removeDoctor,
+  setDoctorStatus,
+  updateClinicSettings,
+  setTokenStart,
+  getTokenInfo,
 } from './engine';
 import { isoDate } from './time';
 import { realtime } from './realtime';
@@ -319,6 +326,39 @@ export function apiDoctorFinish(session: Session, entryId: string) {
 export function apiDoctorCallNext(session: Session, clinicId: string) {
   assertRole(session, 'doctor');
   return callNext(session, clinicId, session.userId);
+}
+
+// ---------- admin (clinic settings, doctor directory, token config) ----------
+
+export function apiAddDoctor(session: Session, input: Parameters<typeof addDoctor>[1]) {
+  return addDoctor(session, input);
+}
+
+export function apiUpdateDoctor(session: Session, doctorId: string, patch: Parameters<typeof updateDoctor>[2]) {
+  return updateDoctor(session, doctorId, patch);
+}
+
+export function apiRemoveDoctor(session: Session, doctorId: string): void {
+  removeDoctor(session, doctorId);
+  void deleteRowFromSupabase('doctors', doctorId).catch((err) =>
+    console.warn('[supabase] doctor delete failed:', err),
+  );
+}
+
+export function apiSetDoctorStatus(session: Session, doctorId: string, status: 'available' | 'in_consultation' | 'on_break' | 'off_duty') {
+  return setDoctorStatus(session, doctorId, status);
+}
+
+export function apiUpdateClinicSettings(session: Session, patch: Parameters<typeof updateClinicSettings>[1]) {
+  return updateClinicSettings(session, patch);
+}
+
+export function apiSetTokenStart(session: Session, nextNumber: number): void {
+  setTokenStart(session, nextNumber);
+}
+
+export function apiGetTokenInfo(clinicId: string) {
+  return getTokenInfo(clinicId);
 }
 
 // ---------- analytics ----------

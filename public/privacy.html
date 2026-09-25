@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Privacy Policy — Arhan Tracks</title>
+    <style>
+      :root { color-scheme: light; }
+      body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; margin: 0; background: #f6f7f5; color: #14201d; line-height: 1.65; }
+      main { max-width: 680px; margin: 0 auto; padding: 40px 20px 80px; }
+      h1 { font-size: 1.6rem; margin: 0 0 4px; }
+      h2 { font-size: 1.05rem; margin: 28px 0 6px; }
+      p, li { font-size: 0.95rem; }
+      .muted { color: #5b6b66; font-size: 0.85rem; }
+      code { background: #e8ede9; border-radius: 4px; padding: 1px 5px; font-size: 0.85em; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Privacy Policy — Arhan Tracks</h1>
+      <p class="muted">Effective date: September 25, 2026</p>
+
+      <p>
+        Arhan Tracks is a clinic queue tracker run by Arhan Family Clinic
+        ("we", "us"). This policy explains what data the app handles and why.
+      </p>
+
+      <h2>Data we handle</h2>
+      <ul>
+        <li><b>Patients:</b> name, mobile number, optional year of birth, and
+        an optional note — used only to identify your place in the clinic
+        queue and send you queue updates.</li>
+        <li><b>Queue activity:</b> check-in times, token numbers, consultation
+        start/end times, and aggregated wait statistics.</li>
+        <li><b>Staff:</b> name, mobile number, and role — used for signing in
+        to staff consoles.</li>
+      </ul>
+
+      <h2>What we do not do</h2>
+      <ul>
+        <li>We do not sell or share your data with third parties.</li>
+        <li>We do not use advertising or tracking SDKs.</li>
+        <li>We do not collect device identifiers, location, or contacts.</li>
+      </ul>
+
+      <h2>Where data lives</h2>
+      <p>
+        Data is stored on Supabase (PostgreSQL, with encryption in transit)
+        and protected by row-level security. Your device also keeps a local
+        offline copy so the app works without a connection.
+      </p>
+
+      <h2>Public queue display</h2>
+      <p>
+        The public live-queue view shows <b>token numbers and statuses only</b>
+        — never patient names or phone numbers.
+      </p>
+
+      <h2>Retention & deletion</h2>
+      <p>
+        Queue data is cleared by the clinic as needed. To have your personal
+        data deleted, contact the clinic at the number shown in the app.
+      </p>
+
+      <h2>Contact</h2>
+      <p>
+        Arhan Family Clinic — contact details are shown on the app's Profile
+        screen, or reach us at the clinic front desk.
+      </p>
+    </main>
+  </body>
+</html>

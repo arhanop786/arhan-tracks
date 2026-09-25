@@ -257,10 +257,24 @@ create policy "demo_anon_select_stats"    on public.daily_stats  for select to a
 -- tamper-resistant, and no other clinic can be created anonymously.
 create policy "demo_anon_insert_seed_clinic" on public.clinics
   for insert to anon with check (id = 'clinic_arhan');
+-- The sync layer upserts the whole DB on every mutation — once the clinic
+-- row exists, upserts become UPDATEs, so the demo tier needs this too
+-- (pinned to the demo clinic's exact id).
+create policy "demo_anon_update_clinics" on public.clinics
+  for update to anon
+  using (id = 'clinic_arhan')
+  with check (id = 'clinic_arhan');
 create policy "demo_anon_insert_doctors" on public.doctors
   for insert to anon with check (clinic_id = 'clinic_arhan');
 create policy "demo_anon_insert_staff"   on public.staff
   for insert to anon with check (clinic_id = 'clinic_arhan');
+-- Directory management (in-app Admin screen): the push layer is upsert-based,
+-- so removing a doctor/staff member needs an explicit row delete — scoped to
+-- the demo clinic like every other demo policy.
+create policy "demo_anon_delete_doctors" on public.doctors
+  for delete to anon using (clinic_id = 'clinic_arhan');
+create policy "demo_anon_delete_staff"   on public.staff
+  for delete to anon using (clinic_id = 'clinic_arhan');
 create policy "demo_anon_insert_patients" on public.patients
   for insert to anon with check (clinic_id = 'clinic_arhan');
 

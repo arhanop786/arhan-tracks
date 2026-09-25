@@ -1,12 +1,14 @@
 import { useSession } from '../state/session';
 import { useNav } from '../state/nav';
-import { apiFetchDailyStats, apiFetchConsultationLog, apiFetchDoctors, apiFetchClinic } from '../server/api';
+import { apiFetchDailyStats, apiFetchConsultationLog, apiFetchDoctors, apiFetchClinic, apiFetchMe } from '../server/api';
+import type { StaffMember } from '../server/types';
 import { Header, Stat } from '../components/ui';
 import { hhmm, fmtDuration } from '../lib/time';
 
 export function DailySummary() {
   const session = useSession((s) => s.session)!;
   const nav = useNav();
+  const me = apiFetchMe(session) as StaffMember | null;
   const stats = apiFetchDailyStats(session.clinicId);
   const log = apiFetchConsultationLog(session.clinicId);
   const doctors = apiFetchDoctors(session.clinicId);
@@ -23,7 +25,18 @@ export function DailySummary() {
 
   return (
     <div className="screen">
-      <Header title="Daily summary" onBack={() => nav.pop()} brand="staff" />
+      <Header
+        title="Daily summary"
+        onBack={() => nav.pop()}
+        brand="staff"
+        right={
+          me?.role === 'admin' ? (
+            <button className="btn sm" onClick={() => nav.push('admin')}>
+              Admin
+            </button>
+          ) : undefined
+        }
+      />
       <div className="scroll-y" style={{ flex: 1, padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
         <div className="card pad">
           <div className="caption">{clinic.name} · today</div>

@@ -476,6 +476,19 @@ export async function pushDbToSupabase(db: DB): Promise<void> {
   );
 }
 
+// ---------- single-row delete (admin directory edits) ----------
+
+/**
+ * Delete one row by id. The push path is upsert-only, so directory removals
+ * (doctor offboarding) need an explicit delete or the next pull would
+ * resurrect the row. Fire-and-forget: callers don't await this.
+ */
+export async function deleteRowFromSupabase(table: string, id: string): Promise<void> {
+  if (!supabaseEnabled) return;
+  const { error } = await sb().from(table).delete().eq('id', id);
+  if (error) throw new Error(`${table}: ${error.message}`);
+}
+
 // ---------- wipe + reseed: demo reset ----------
 
 /** Empty every table (demo Reset). Order: children before parents. */

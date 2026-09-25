@@ -7,7 +7,9 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "vite --port 5173 --strictPort",
     "build": "tsc --noEmit && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "icons": "node scripts/make-icons.mjs",
+    "twa": "node scripts/make-twa.mjs"
   },
   "keywords": [],
   "author": "",

@@ -18,6 +18,7 @@ import { PatientDetails } from './screens/PatientDetails';
 import { QueueMgmt } from './screens/QueueMgmt';
 import { DoctorDashboard } from './screens/DoctorDashboard';
 import { DailySummary, Analytics } from './screens/Summary';
+import { Admin } from './screens/Admin';
 import { IconWifiOff } from './components/icons';
 
 export default function App() {
@@ -74,6 +75,8 @@ export default function App() {
         return <DailySummary />;
       case 'analytics':
         return <Analytics />;
+      case 'admin':
+        return <Admin />;
       default:
         return <Splash />;
     }
