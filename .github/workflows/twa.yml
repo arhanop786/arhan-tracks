@@ -87,11 +87,15 @@ jobs:
           # secret to override before the first Play upload.
           TWA_KEY_PASSWORD: ${{ secrets.TWA_KEY_PASSWORD || 'arhan-tracks-twa' }}
 
+      # Bubblewrap resolves the Gradle project and signed outputs relative to
+      # the CWD, so run inside twa/ — the committed manifest's directory.
       - name: Generate Android project from twa-manifest.json
-        run: bubblewrap update --manifest=twa/twa-manifest.json --skipVersionUpgrade
+        working-directory: twa
+        run: bubblewrap update --manifest=twa-manifest.json --skipVersionUpgrade
 
       - name: Build signed AAB + APK
-        run: bubblewrap build --manifest=twa/twa-manifest.json --skipPwaValidation
+        working-directory: twa
+        run: bubblewrap build --manifest=twa-manifest.json --skipPwaValidation
         env:
           BUBBLEWRAP_KEYSTORE_PASSWORD: ${{ secrets.TWA_KEY_PASSWORD || 'arhan-tracks-twa' }}
           BUBBLEWRAP_KEY_PASSWORD: ${{ secrets.TWA_KEY_PASSWORD || 'arhan-tracks-twa' }}
@@ -99,7 +103,8 @@ jobs:
       - name: Print upload key SHA-256 (for assetlinks.json)
         run: >
           keytool -list -v -keystore twa/android.keystore -alias android
-          -storepass "$TWA_KEY_PASSWORD" | grep -A1 "SHA256:" || true
+          -storepass "$TWA_KEY_PASSWORD" | tee twa/signing-fingerprint.txt
+          | grep -A1 "SHA256:" || true
         env:
           TWA_KEY_PASSWORD: ${{ secrets.TWA_KEY_PASSWORD || 'arhan-tracks-twa' }}
 
@@ -108,6 +113,7 @@ jobs:
         with:
           name: arhan-tracks-play
           path: |
-            twa/app/app-release-bundle.aab
-            twa/app/app-release-signed.apk
+            twa/app-release-bundle.aab
+            twa/app-release-signed.apk
+            twa/signing-fingerprint.txt
           if-no-files-found: error
