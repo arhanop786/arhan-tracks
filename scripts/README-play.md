@@ -40,20 +40,20 @@ you need no Java, no Android Studio, no local Android SDK.
    - generates the upload keystore once and caches it,
    - runs `bubblewrap init` against the live web manifest,
    - produces `twa/app-release-bundle.aab` (+ signed APK),
-   - prints the **upload key SHA-256** fingerprint in the log.
-5. **Download the AAB** from the run's *Artifacts* section.
+   - prints the **upload key SHA-256** fingerprint in the log,
+   - ships a ready-made `public/.well-known/assetlinks.json` (the repo's
+     `signing.sha256` is baked in — no manual copy-paste).
+5. **Download the AAB** (`arhan-tracks-play`) from the run's *Artifacts* section.
 
 ---
 
-## Fill in the two identity links (after the first build)
+## Identity links
 
-1. Copy the `SHA256:` value from the workflow log into
-   `public/.well-known/assetlinks.json` (replaces the `TODO:` line),
-   commit + push. Verify: <https://arhan-tracks.pages.dev/.well-known/assetlinks.json>
-   (also paste the same statement into Play Console → *App integrity* →
-   *Link to website* when asked).
-2. The Play **upload key certificate** (App integrity page) must show the
-   same SHA-256 — it will, since the same cached keystore signs every build.
+`assetlinks.json` is generated automatically with the upload-key fingerprint
+stored in `.twa.config.json`. Verify it after the first deploy:
+<https://arhan-tracks.pages.dev/.well-known/assetlinks.json> — the one
+statement covers both the Android app and any desktop browsers verifying the
+domain (the same data also satisfies Play Console → *App integrity* when asked).
 
 ---
 

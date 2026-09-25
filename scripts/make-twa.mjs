@@ -111,17 +111,17 @@ const twaManifest = {
 writeFileSync(join(root, 'twa', 'twa-manifest.json'), JSON.stringify(twaManifest, null, 2) + '\n');
 
 // ---------- 2. Digital Asset Links template ----------
-// The SHA-256 fingerprint is printed by the twa.yml workflow after the
-// first build ("Upload key SHA-256"). Paste it into the line marked TODO.
+// The upload key's SHA-256 lives in .twa.config.json (uploadKeySha256).
+// It is printed by the twa.yml workflow after the first build and is
+// stable: the same cached keystore signs every build.
+const uploadFp = cfg.uploadKeySha256 || 'TODO:REPLACE_WITH_UPLOAD_KEY_SHA256_FROM_CI_OUTPUT';
 const assetlinks = [
   {
     relation: ['delegate_permission/common.handle_all_urls'],
     target: {
       namespace: 'android_app',
       package_name: cfg.packageId,
-      sha256_cert_fingerprints: [
-        'TODO:REPLACE_WITH_UPLOAD_KEY_SHA256_FROM_CI_OUTPUT',
-      ],
+      sha256_cert_fingerprints: [uploadFp],
     },
   },
 ];
@@ -210,7 +210,7 @@ writeFileSync(join(storeDir, 'phone-screenshot.png'), screenshot());
 // ---------- summary ----------
 console.log('Play Store package assets generated:');
 console.log('  twa/twa-manifest.json            (bubblewrap build config)');
-console.log('  public/.well-known/assetlinks.json  (paste CI fingerprint into TODO)');
+console.log('  public/.well-known/assetlinks.json  (fingerprint from .twa.config.json)');
 console.log('  store/feature-graphic.png        (1024×500)');
 console.log('  store/phone-screenshot.png       (1080×1920 placeholder — replace)');
 console.log('Next: push to main — .github/workflows/twa.yml builds the signed AAB.');
