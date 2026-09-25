@@ -90,7 +90,15 @@ const twaManifest = {
   maskableIconUrl: cfg.maskableIconUrl,
   monochromeIconUrl: undefined,
   splashScreenFadeOutDuration: 300,
-  signingKey: { path: './android.keystore', alias: 'android' },
+  // apksigner runs from the Gradle project dir (twa/app/), so the path
+  // must be absolute or it fails with "Failed to load signer". CI exports
+  // TWA_SIGNING_KEY_PATH; local bubblewrap resolves relative to cwd.
+  signingKey: {
+    path: process.env.TWA_SIGNING_KEY_PATH
+      ? join(root, 'twa', 'android.keystore')
+      : './android.keystore',
+    alias: 'android',
+  },
   appVersionCode: 1,
   appVersionName: '1.0.0',
   shortcuts: [],

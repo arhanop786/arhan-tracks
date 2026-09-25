@@ -36,6 +36,10 @@ jobs:
 
       - name: Generate Play assets (bubblewrap config + store graphics)
         run: node scripts/make-twa.mjs
+        env:
+          # Forces an absolute signingKey.path in twa-manifest.json — apksigner
+          # resolves relative paths from the Gradle dir and can't find the keystore.
+          TWA_SIGNING_KEY_PATH: ${{ github.workspace }}/twa/android.keystore
 
       - uses: actions/setup-java@v4
         with:
