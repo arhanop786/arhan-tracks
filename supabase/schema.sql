@@ -37,6 +37,7 @@ create table if not exists public.clinics (
   close_minutes           int  not null default 1140,  -- 19:00
   slot_interval_minutes   int  not null default 10,
   checkin_lead_minutes    int  not null default 15,
+  admin_pin               text not null default '246810', -- shared Admin-console PIN
   created_at              timestamptz not null default now()
 );
 
@@ -238,6 +239,9 @@ $drop$;
 --   • anon CANNOT: delete anything, edit clinic config, edit other
 --     patients' rows, read notifications (personal — needs auth).
 -- ===============================================================
+
+-- Live migration for pre-existing deployments (no-op on fresh databases).
+alter table public.clinics add column if not exists admin_pin text not null default '246810';
 
 -- Read: clinic config + directory open to everyone in demo
 create policy "demo_anon_select_clinics"  on public.clinics      for select to anon using (true);

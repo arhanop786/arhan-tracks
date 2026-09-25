@@ -50,6 +50,7 @@ export function buildDemo(now = Date.now()): DemoConfig {
     closeMinutes: 19 * 60,
     slotIntervalMinutes: 10,
     checkinLeadMinutes: 15,
+    adminPin: '246810',
   };
 
   const doctors: Doctor[] = [

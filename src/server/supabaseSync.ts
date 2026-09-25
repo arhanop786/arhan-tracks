@@ -79,6 +79,7 @@ function toClinic(r: any): Clinic {
     closeMinutes: num(r.close_minutes) || 1140,
     slotIntervalMinutes: num(r.slot_interval_minutes) || 10,
     checkinLeadMinutes: num(r.checkin_lead_minutes) || 15,
+    adminPin: typeof r.admin_pin === 'string' && r.admin_pin ? r.admin_pin : '246810',
   };
 }
 
@@ -325,6 +326,7 @@ export async function pushDbToSupabase(db: DB): Promise<void> {
       close_minutes: clinic.closeMinutes,
       slot_interval_minutes: clinic.slotIntervalMinutes,
       checkin_lead_minutes: clinic.checkinLeadMinutes,
+      admin_pin: clinic.adminPin,
     },
   ]);
 

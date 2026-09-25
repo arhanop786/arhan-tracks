@@ -56,7 +56,7 @@ Requires Node 18+.
 | Phone | Account | Lands on |
 |---|---|---|
 | `9000000001` | Priya (Reception) | Staff Dashboard — full queue controls |
-| `9000000002` | Ravi (Admin) | Staff Dashboard |
+| `9000000002` | Ravi (Admin) | Staff Dashboard → **Admin** console (PIN-gated, default PIN `246810` — change it in the console's Admin PIN card) |
 | `8800000001` | Dr. Meera Krishnan | Doctor Dashboard (use the **Doctor** sign-in) |
 | `8800000002` | Dr. Arjun Rao | Doctor Dashboard |
 

@@ -6,18 +6,21 @@ import { useLive } from '../state/live';
 import { useLiveSync } from '../state/useLiveSync';
 import {
   apiAddDoctor,
+  apiCheckAdminPin,
   apiFetchClinic,
   apiFetchDoctors,
   apiFetchMe,
   apiGetTokenInfo,
+  apiIsAdminPinDefault,
   apiRemoveDoctor,
+  apiSetAdminPin,
   apiSetTokenStart,
   apiUpdateClinicSettings,
   apiUpdateDoctor,
 } from '../server/api';
 import type { Doctor, StaffMember } from '../server/types';
 import { Header, Field, Segmented, Sheet } from '../components/ui';
-import { IconBuilding, IconClock, IconEdit, IconList, IconPlus, IconStethoscope, IconX } from '../components/icons';
+import { IconBuilding, IconClock, IconEdit, IconList, IconLock, IconPlus, IconStethoscope, IconX } from '../components/icons';
 import { fmtTime12 } from '../lib/time';
 
 type Tab = 'doctors' | 'clinic' | 'tokens';
@@ -39,6 +42,9 @@ export function Admin() {
   const [tab, setTab] = useState<Tab>('doctors');
   const [editing, setEditing] = useState<Doctor | 'new' | null>(null);
   const [confirmRemove, setConfirmRemove] = useState<Doctor | null>(null);
+  // Per-browser unlock (sessionStorage clears on tab close) — the shared PIN
+  // is the real cross-device secret; this just avoids retyping it every visit.
+  const [unlocked, setUnlocked] = useState(() => sessionStorage.getItem('arhan_admin_unlocked') === '1');
 
   const run = (fn: () => unknown, ok: string) => {
     try {
@@ -63,6 +69,19 @@ export function Admin() {
           </div>
         </div>
       </div>
+    );
+  }
+
+  if (!unlocked) {
+    return (
+      <PinGate
+        clinicId={session.clinicId}
+        onUnlock={() => {
+          sessionStorage.setItem('arhan_admin_unlocked', '1');
+          setUnlocked(true);
+        }}
+        onCancel={() => nav.pop()}
+      />
     );
   }
 
@@ -137,6 +156,89 @@ export function Admin() {
   );
 }
 
+// ---------- PIN gate ----------
+
+function PinGate({ clinicId, onUnlock, onCancel }: { clinicId: string; onUnlock: () => void; onCancel: () => void }) {
+  const toast = useUI((s) => s.toast);
+  const [pin, setPin] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const submit = () => {
+    setBusy(true);
+    try {
+      if (apiCheckAdminPin(clinicId, pin)) {
+        onUnlock();
+      } else {
+        setError('Incorrect PIN — try again');
+        setPin('');
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Check failed';
+      setError(msg);
+      setPin('');
+      toast(msg, 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="screen">
+      <Header title="Admin" subtitle="Restricted" onBack={onCancel} brand="staff" />
+      <div className="scroll-y" style={{ flex: 1, padding: 24, display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div
+          style={{
+            width: 64, height: 64, borderRadius: 20, margin: '8px auto 0',
+            background: 'var(--brand-soft)', color: 'var(--brand)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}
+        >
+          <IconLock size={28} />
+        </div>
+        <div style={{ textAlign: 'center' }}>
+          <div className="h2">Enter admin PIN</div>
+          <div className="caption" style={{ marginTop: 4 }}>
+            This device is shared — the PIN protects clinic settings.
+          </div>
+        </div>
+        <div className="card pad" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <Field label="Admin PIN">
+            <input
+              className="input"
+              type="password"
+              inputMode="numeric"
+              autoComplete="off"
+              autoFocus
+              value={pin}
+              onChange={(e) => {
+                setPin(e.target.value.replace(/\D/g, '').slice(0, 8));
+                setError(null);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && pin.length >= 4 && !busy) submit();
+              }}
+              placeholder="••••"
+              style={{ textAlign: 'center', fontSize: 22, letterSpacing: 8, fontWeight: 800 }}
+            />
+          </Field>
+          {error && (
+            <div className="caption" style={{ color: 'var(--coral-deep)', textAlign: 'center', fontWeight: 700 }} role="alert">
+              {error}
+            </div>
+          )}
+          <button className="btn primary block" disabled={pin.length < 4 || busy} onClick={submit}>
+            Unlock admin console
+          </button>
+          <div className="caption" style={{ textAlign: 'center' }}>
+            5 wrong attempts lock the console for 5 minutes.
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ---------- doctors tab ----------
 
 function DoctorsTab({
@@ -197,7 +299,105 @@ function DoctorsTab({
       {doctors.length === 0 && (
         <div className="card pad caption" style={{ textAlign: 'center' }}>No doctors yet — add the first one below.</div>
       )}
+      <SecurityCard />
     </>
+  );
+}
+
+// ---------- PIN management (Doctors tab, below the directory) ----------
+
+function SecurityCard() {
+  const session = useSession((s) => s.session)!;
+  const toast = useUI((s) => s.toast);
+  const refresh = useLive((s) => s.refreshStaff);
+  const isDefault = apiIsAdminPinDefault(session.clinicId);
+  const [open, setOpen] = useState(false);
+  const [pin, setPin] = useState('');
+  const [confirm, setConfirm] = useState('');
+
+  const valid = /^\d{4,8}$/.test(pin) && pin === confirm;
+
+  if (!open) {
+    return (
+      <div className="card pad row between">
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          <IconLock size={18} style={{ color: 'var(--brand)' }} />
+          <div>
+            <div className="body-strong">Admin PIN</div>
+            <div className="caption">
+              {isDefault
+                ? 'Still the shared default — change it before going live'
+                : 'Custom PIN set — protects settings on shared devices'}
+            </div>
+          </div>
+        </div>
+        <button className="btn sm" onClick={() => setOpen(true)}>
+          {isDefault ? 'Set PIN' : 'Change'}
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="card pad" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div className="row" style={{ gap: 8 }}>
+        <IconLock size={18} style={{ color: 'var(--brand)' }} />
+        <div className="body-strong">Change admin PIN</div>
+      </div>
+      <div className="caption">
+        The PIN is shared across all clinic devices and unlocks the Admin console.
+      </div>
+      <div style={{ display: 'flex', gap: 10 }}>
+        <Field label="New PIN">
+          <input
+            className="input"
+            type="password"
+            inputMode="numeric"
+            autoComplete="new-password"
+            value={pin}
+            onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 8))}
+            placeholder="4–8 digits"
+          />
+        </Field>
+        <Field label="Confirm">
+          <input
+            className="input"
+            type="password"
+            inputMode="numeric"
+            autoComplete="new-password"
+            value={confirm}
+            onChange={(e) => setConfirm(e.target.value.replace(/\D/g, '').slice(0, 8))}
+            placeholder="Repeat"
+          />
+        </Field>
+      </div>
+      {pin && confirm && pin !== confirm && (
+        <div className="caption" style={{ color: 'var(--coral-deep)' }}>PINs don’t match yet.</div>
+      )}
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button className="btn block" onClick={() => { setOpen(false); setPin(''); setConfirm(''); }}>
+          Cancel
+        </button>
+        <button
+          className="btn primary block"
+          disabled={!valid}
+          onClick={() => {
+            try {
+              apiSetAdminPin(session, pin);
+              toast('Admin PIN updated');
+              refresh(session.clinicId);
+              setOpen(false);
+              setPin('');
+              setConfirm('');
+            } catch (e) {
+              toast(e instanceof Error ? e.message : 'Could not update PIN', 'error');
+            }
+          }}
+        >
+          Update PIN
+        </button>
+      </div>
+    </div>
   );
 }
 

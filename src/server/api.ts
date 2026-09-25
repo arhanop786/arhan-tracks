@@ -52,6 +52,9 @@ import {
   updateClinicSettings,
   setTokenStart,
   getTokenInfo,
+  checkAdminPin,
+  setAdminPin,
+  isAdminPinDefault,
 } from './engine';
 import { isoDate } from './time';
 import { realtime } from './realtime';
@@ -359,6 +362,18 @@ export function apiSetTokenStart(session: Session, nextNumber: number): void {
 
 export function apiGetTokenInfo(clinicId: string) {
   return getTokenInfo(clinicId);
+}
+
+export function apiCheckAdminPin(clinicId: string, pin: string): boolean {
+  return checkAdminPin(clinicId, pin);
+}
+
+export function apiSetAdminPin(session: Session, pin: string): void {
+  setAdminPin(session, pin);
+}
+
+export function apiIsAdminPinDefault(clinicId: string): boolean {
+  return isAdminPinDefault(clinicId);
 }
 
 // ---------- analytics ----------

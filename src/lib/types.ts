@@ -24,6 +24,8 @@ export interface Clinic {
   slotIntervalMinutes: number;
   /** Average check-in lead time in minutes before slot */
   checkinLeadMinutes: number;
+  /** Admin PIN for the in-app Admin console (4–8 digits), shared across devices */
+  adminPin: string;
 }
 
 export interface WorkingHours {

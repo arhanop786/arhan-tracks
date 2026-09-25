@@ -866,11 +866,80 @@ function assertStaff(session: Session, clinicId: string): void {
   if (staff.clinicId !== clinicId) throw new ApiError('Cross-clinic access denied', 'forbidden');
 }
 
-/** Clinic settings + doctor directory are admin-only. */
+/** Clinic settings + doctor directory are admin-only, PIN-gated. */
 function assertAdmin(session: Session): void {
   if (session.role !== 'staff') throw new ApiError('Admin only', 'forbidden');
   const staff = getStaff(session.userId);
   if (staff.role !== 'admin') throw new ApiError('Requires an admin account', 'forbidden');
+  verifyAdminPin(session.clinicId);
+}
+
+// ---------- admin PIN gate (shared across devices) ----------
+
+const PIN_LIMIT = 5;
+const PIN_LOCK_MS = 5 * 60_000;
+
+/** Per-browser-attempt tracking — the PIN itself is the cross-device secret. */
+const pinAttempts = new Map<string, { count: number; lockedUntil: number }>();
+
+function pinGate(clinicId: string): { count: number; lockedUntil: number } {
+  let g = pinAttempts.get(clinicId);
+  if (!g) {
+    g = { count: 0, lockedUntil: 0 };
+    pinAttempts.set(clinicId, g);
+  }
+  return g;
+}
+
+/** Throws when the gate is locked; called on every admin mutation. */
+export function verifyAdminPin(clinicId: string): void {
+  const g = pinGate(clinicId);
+  if (g.lockedUntil > Date.now()) {
+    const mins = Math.ceil((g.lockedUntil - Date.now()) / 60_000);
+    throw new ApiError(`Too many incorrect attempts — try again in ${mins} min`, 'pin_locked');
+  }
+}
+
+/**
+ * Check a PIN candidate against the clinic's shared admin PIN.
+ * On success the attempt counter resets; on failure it increments, and the
+ * gate locks for 5 minutes after 5 consecutive failures.
+ */
+export function checkAdminPin(clinicId: string, pin: string): boolean {
+  const clinic = getClinic(clinicId);
+  const g = pinGate(clinicId);
+  if (g.lockedUntil > Date.now()) {
+    const mins = Math.ceil((g.lockedUntil - Date.now()) / 60_000);
+    throw new ApiError(`Too many incorrect attempts — try again in ${mins} min`, 'pin_locked');
+  }
+  if (pin === clinic.adminPin) {
+    g.count = 0;
+    return true;
+  }
+  g.count += 1;
+  if (g.count >= PIN_LIMIT) {
+    g.lockedUntil = Date.now() + PIN_LOCK_MS;
+    g.count = 0;
+    throw new ApiError('Too many incorrect attempts — locked for 5 minutes', 'pin_locked');
+  }
+  return false;
+}
+
+/** Whether the shared Admin PIN has been changed from the shipped default. */
+export function isAdminPinDefault(clinicId: string): boolean {
+  return getClinic(clinicId).adminPin === '246810';
+}
+
+export function setAdminPin(session: Session, pin: string): void {
+  assertAdmin(session);
+  const clinic = getClinic(session.clinicId);
+  const v = pin.trim();
+  if (!/^\d{4,8}$/.test(v)) throw new ApiError('PIN must be 4–8 digits', 'invalid');
+  if (v === clinic.adminPin) throw new ApiError('New PIN must be different from the current one', 'invalid');
+  clinic.adminPin = v;
+  pinAttempts.delete(clinic.id);
+  pushEvent(clinic.id, session.name, 'admin_pin_changed', 'Admin PIN updated');
+  persistDb();
 }
 
 /** Doctor status changes: any staff member of the clinic. */
