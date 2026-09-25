@@ -80,7 +80,8 @@ export function buildDemo(now = Date.now()): DemoConfig {
       name: 'Priya (Reception)',
       phone: '9000000001',
       role: 'receptionist',
-      pin: '1111',
+      // Salted PBKDF2 hashes of the demo PINs (1111 / 2222) — see src/server/pin.ts
+      pin: 'pbkdf2-sha256$120000$314d5b1fe5f138288140356ea6fdf123$d5388e8375193a4a243844330c36e465d5b1c0b73b6481cb06d0fc475671cf8f',
       permissions: [
         'patient.register',
         'appointments.manage',
@@ -96,7 +97,7 @@ export function buildDemo(now = Date.now()): DemoConfig {
       name: 'Ravi (Admin)',
       phone: '9000000002',
       role: 'admin',
-      pin: '2222',
+      pin: 'pbkdf2-sha256$120000$a51a8a3e94838970d9ee3a7bcab656bb$057df8ea17ef08cf29e6202caee31a28d90d0ecc4c66c5cd2f1c183e084f41d2',
       permissions: [
         'patient.register',
         'appointments.manage',

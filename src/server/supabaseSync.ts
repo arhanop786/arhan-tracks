@@ -31,7 +31,6 @@ import type {
   QueueEvent,
   StaffMember,
 } from './types';
-import { DEFAULT_STAFF_PIN } from './types';
 import type { DB } from './db';
 import { buildDemo } from './seed';
 
@@ -103,7 +102,9 @@ function toStaff(r: any): StaffMember {
     phone: r.phone,
     role: r.role ?? 'receptionist',
     permissions: r.permissions ?? [],
-    pin: typeof r.pin === 'string' && r.pin ? r.pin : DEFAULT_STAFF_PIN,
+    // Stored value may be a salted hash (current) or legacy plaintext —
+    // verifyPin handles both and upgrades plaintext on next login.
+    pin: typeof r.pin === 'string' && r.pin ? r.pin : undefined,
   };
 }
 
@@ -354,7 +355,7 @@ export async function pushDbToSupabase(db: DB): Promise<void> {
       phone: x.phone,
       role: x.role,
       permissions: x.permissions,
-      pin: x.pin ?? DEFAULT_STAFF_PIN,
+      pin: x.pin ?? null,
     })),
   );
 

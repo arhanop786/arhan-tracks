@@ -16,7 +16,7 @@ import type {
   StaffQueueRow,
 } from './types';
 import type { StaffRole, StaffPermission } from './types';
-import { DEFAULT_STAFF_PIN } from './types';
+import { hashPin, pinNeedsUpgrade, verifyPin } from './pin';
 import { db, nextTokenSeq, persistDb } from './db';
 import { tokenString, uid } from './ids';
 import { isoDate, timeToMinutes } from './time';
@@ -912,8 +912,13 @@ export function checkStaffPin(staff: StaffMember, pin: string): boolean {
     const mins = Math.ceil((g.lockedUntil - Date.now()) / 60_000);
     throw new ApiError(`Too many incorrect attempts — try again in ${mins} min`, 'pin_locked');
   }
-  if (pin === (staff.pin ?? DEFAULT_STAFF_PIN)) {
+  if (verifyPin(staff.pin, pin)) {
     g.count = 0;
+    // Legacy plaintext row: transparently upgrade it to a salted hash.
+    if (pinNeedsUpgrade(staff.pin)) {
+      staff.pin = hashPin(pin);
+      persistDb();
+    }
     return true;
   }
   g.count += 1;
@@ -963,7 +968,7 @@ export function setStaffPin(session: Session, staffId: string, pin: string | nul
   } else {
     const v = pin.trim();
     if (!/^\d{4,8}$/.test(v)) throw new ApiError('PIN must be 4–8 digits', 'invalid');
-    target.pin = v;
+    target.pin = hashPin(v);
     pinAttempts.delete(target.id);
     pushEvent(session.clinicId, session.name, 'staff_pin_changed', `PIN updated for ${target.name}`);
   }
@@ -999,7 +1004,7 @@ export function addStaffMember(session: Session, input: { name: string; phone: s
     name,
     phone,
     role: input.role,
-    pin: input.pin?.trim() || undefined,
+    pin: input.pin?.trim() ? hashPin(input.pin.trim()) : undefined,
     permissions: input.permissions ?? (input.role === 'admin' ? ALL_STAFF_PERMISSIONS : ['patient.register', 'appointments.manage', 'queue.no_show', 'queue.pause', 'queue.priority', 'queue.reorder']),
   };
   db.staff.push(member);

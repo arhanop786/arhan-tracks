@@ -1,0 +1,37 @@
+{
+  "packageId": "com.arhan.tracks",
+  "host": "https://arhan-tracks.pages.dev",
+  "name": "Arhan Tracks — Live clinic queue",
+  "launcherName": "Arhan Tracks",
+  "display": "standalone",
+  "themeColor": "#0B3B36",
+  "themeColorDark": "#0B3B36",
+  "navigationColor": "#0B3B36",
+  "navigationColorDark": "#0B3B36",
+  "navigationDividerColor": "#0B3B36",
+  "navigationDividerColorDark": "#0B3B36",
+  "backgroundColor": "#F6F7F5",
+  "enableNotifications": false,
+  "startUrl": "/",
+  "iconUrl": "https://arhan-tracks.pages.dev/icon-512.png",
+  "maskableIconUrl": "https://arhan-tracks.pages.dev/maskable-icon.png",
+  "splashScreenFadeOutDuration": 300,
+  "signingKey": {
+    "path": "./android.keystore",
+    "alias": "android"
+  },
+  "appVersionCode": 1,
+  "appVersionName": "1.0.0",
+  "shortcuts": [],
+  "generatorApp": "Bubblewrap",
+  "webManifestUrl": "https://arhan-tracks.pages.dev/manifest.webmanifest",
+  "fallbackType": "customtabs",
+  "features": {
+    "locationDelegation": {
+      "enabled": true
+    }
+  },
+  "alphaDependencies": {
+    "enabled": false
+  }
+}

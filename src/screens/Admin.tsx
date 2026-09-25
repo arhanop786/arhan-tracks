@@ -23,7 +23,6 @@ import {
   apiUpdateStaff,
 } from '../server/api';
 import type { Doctor, StaffMember, StaffPermission } from '../server/types';
-import { DEFAULT_STAFF_PIN } from '../server/types';
 import { Header, Field, Segmented, Sheet } from '../components/ui';
 import { IconBuilding, IconClock, IconEdit, IconList, IconLock, IconPlus, IconStethoscope, IconUsers, IconX } from '../components/icons';
 import { fmtTime12 } from '../lib/time';
@@ -620,12 +619,13 @@ function SecurityCard() {
   const toast = useUI((s) => s.toast);
   const refresh = useLive((s) => s.refreshStaff);
   const me = apiFetchMe(session) as StaffMember | null;
-  const isDefault = (me?.pin ?? DEFAULT_STAFF_PIN) === DEFAULT_STAFF_PIN;
+  // Storage now holds salted hashes — “no PIN” is all we can (and need to) know.
+  const hasPin = Boolean(me?.pin);
   const [open, setOpen] = useState(false);
   const [pin, setPin] = useState('');
   const [confirm, setConfirm] = useState('');
 
-  const valid = /^\d{4,8}$/.test(pin) && pin === confirm && pin !== (me?.pin ?? '');
+  const valid = /^\d{4,8}$/.test(pin) && pin === confirm;
 
   if (!open) {
     return (
@@ -635,14 +635,14 @@ function SecurityCard() {
           <div>
             <div className="body-strong">My PIN</div>
             <div className="caption">
-              {isDefault
-                ? 'Still the default — change it before going live'
-                : 'Custom PIN set — unlocks Admin on shared devices'}
+              {hasPin
+                ? 'Custom PIN set — unlocks Admin on shared devices'
+                : 'No PIN yet — set one before going live'}
             </div>
           </div>
         </div>
         <button className="btn sm" onClick={() => setOpen(true)}>
-          {isDefault ? 'Set PIN' : 'Change'}
+          {hasPin ? 'Change' : 'Set PIN'}
         </button>
       </div>
     );

@@ -66,7 +66,7 @@ export function nextTokenSeq(clinicId: string): number {
 // ----------------------------------------------------------
 
 const STORAGE_KEY = 'arhan_db_shared';
-const SCHEMA_VERSION = 12; // v12: staff.pin (per-staff PINs) replaces clinics.adminPin
+const SCHEMA_VERSION = 13; // v13: staff PINs stored as salted PBKDF2 hashes (pbkdf2-sha256$…)
 
 let supabasePushTimer: ReturnType<typeof setTimeout> | null = null;
 

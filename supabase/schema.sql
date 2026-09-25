@@ -37,7 +37,6 @@ create table if not exists public.clinics (
   close_minutes           int  not null default 1140,  -- 19:00
   slot_interval_minutes   int  not null default 10,
   checkin_lead_minutes    int  not null default 15,
-  admin_pin               text not null default '246810', -- shared Admin-console PIN
   created_at              timestamptz not null default now()
 );
 
@@ -60,7 +59,7 @@ create table if not exists public.staff (
   phone        text not null,
   role         text not null default 'receptionist' check (role in ('receptionist','admin')),
   permissions  jsonb not null default '[]',
-  pin          text,
+  pin          text, -- salted PBKDF2 hash (pbkdf2-sha256$iters$salt$key); legacy plaintext upgrades on login
   created_at   timestamptz not null default now()
 );
 create unique index if not exists staff_clinic_phone_uq on public.staff (clinic_id, phone);
@@ -247,6 +246,13 @@ alter table public.staff add column if not exists pin text;
 update public.staff set pin = '1111' where pin is null and phone = '9000000001';
 update public.staff set pin = '2222' where pin is null and phone = '9000000002';
 update public.staff set pin = '246810' where pin is null;
+
+-- v13: PINs are stored as salted PBKDF2 hashes. The demo rows get fixed
+-- hashes (plaintext hashing requires the secret, so this is done here);
+-- any other legacy plaintext upgrades transparently on first login.
+update public.staff set pin = 'pbkdf2-sha256$120000$314d5b1fe5f138288140356ea6fdf123$d5388e8375193a4a243844330c36e465d5b1c0b73b6481cb06d0fc475671cf8f' where pin = '1111';
+update public.staff set pin = 'pbkdf2-sha256$120000$a51a8a3e94838970d9ee3a7bcab656bb$057df8ea17ef08cf29e6202caee31a28d90d0ecc4c66c5cd2f1c183e084f41d2' where pin = '2222';
+alter table public.clinics drop column if exists admin_pin;
 
 -- Read: clinic config + directory open to everyone in demo
 create policy "demo_anon_select_clinics"  on public.clinics      for select to anon using (true);

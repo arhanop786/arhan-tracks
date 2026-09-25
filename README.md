@@ -132,7 +132,7 @@ Every push to `main` builds and publishes `dist/` to Cloudflare Pages via [`.git
 - [ ] **Push notifications** — FCM/Web Push for the existing 3-tokens-away / your-turn / delay events
 - [ ] **Real SMS OTP** — Twilio/MSG91 (the first paid API key; everything else runs free)
 - [x] **PWA** — installable on phones (manifest + icons + iOS meta), service worker precaches the app shell for the offline patient view; `node scripts/make-icons.mjs` regenerates icons
-- [x] **Google Play distribution** — Trusted Web Activity package via `npm run twa` (bubblewrap); see [`scripts/README-play.md`](scripts/README-play.md) for the full publishing walkthrough. Play-hosted privacy policy at `/privacy.html`.
+- [x] **Google Play distribution** — Trusted Web Activity package; the signed AAB is built in the cloud by `twa.yml` (no local Java/Android needed). See [`scripts/README-play.md`](scripts/README-play.md) for the full publishing walkthrough. Play-hosted privacy policy at `/privacy.html`, asset links at `/.well-known/assetlinks.json`, listing graphics in `store/`.
 
 ## Tech stack
 

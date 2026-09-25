@@ -20,3 +20,7 @@ Thumbs.db
 
 # Freebuff agent workspace
 .freebuff/
+
+# Android upload keystore (generated in CI, cached)
+android.keystore
+twa/app-release-*
