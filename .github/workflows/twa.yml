@@ -49,24 +49,18 @@ jobs:
       - name: Install Bubblewrap CLI
         run: npm install -g @bubblewrap/cli
 
-      # Bubblewrap expects its own cmdline-tools layout; the runner's
-      # preinstalled SDK fails its structural check. Build a minimal SDK
-      # exactly the way Bubblewrap's own installer would.
-      - name: Install Android cmdline-tools for Bubblewrap
+      # Bubblewrap validates the SDK by requiring a `tools/` OR `bin/`
+      # folder at the SDK ROOT (AndroidSdkTools.validatePath). The runner's
+      # preinstalled SDK nests its tools at cmdline-tools/latest/bin, so
+      # expose both spellings at the root — no downloads needed, and the
+      # runner's SDK already has platforms/build-tools with licenses accepted.
+      - name: Prepare Android SDK for Bubblewrap
         run: |
-          wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O /tmp/clt.zip
-          mkdir -p "$HOME/android-sdk/cmdline-tools"
-          unzip -q /tmp/clt.zip -d "$HOME/android-sdk/cmdline-tools"
-          mv "$HOME/android-sdk/cmdline-tools/cmdline-tools" "$HOME/android-sdk/cmdline-tools/latest"
-          yes | "$HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
-          "$HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager" "platform-tools" "platforms;android-34" "build-tools;34.0.0" > /dev/null
-
-      # Point Bubblewrap at them so it never prompts interactively.
-      - name: Configure Bubblewrap (skip interactive prompts)
-        run: |
+          ln -sfn "$ANDROID_HOME/cmdline-tools/latest/bin" "$ANDROID_HOME/bin"
+          ln -sfn "$ANDROID_HOME/cmdline-tools/latest" "$ANDROID_HOME/tools"
           mkdir -p ~/.bubblewrap
           printf '{"jdkPath":"%s","androidSdkPath":"%s"}\n' \
-            "$JAVA_HOME" "$HOME/android-sdk" > ~/.bubblewrap/config.json
+            "$JAVA_HOME" "$ANDROID_HOME" > ~/.bubblewrap/config.json
           cat ~/.bubblewrap/config.json
 
       - name: Restore upload keystore
