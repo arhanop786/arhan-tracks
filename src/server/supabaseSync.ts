@@ -239,7 +239,21 @@ export async function pullFromSupabase(db: DB): Promise<boolean> {
 
     // Empty database → seed it from the in-memory demo data. A second
     // device racing us hits the same upserts (idempotent) or pulls ours.
-    if (!existing) await pushDbToSupabase(db);
+    // Also self-heal when an older push died midway (clinic row present,
+    // patient/queue/appointment rows missing) — otherwise new visitors
+    // would be stuck on an empty clinic forever.
+    if (!existing) {
+      await pushDbToSupabase(db);
+    } else {
+      const { count: ptCount, error: ptErr } = await s
+        .from('patients')
+        .select('id', { count: 'exact', head: true })
+        .eq('clinic_id', clinicId);
+      if (!ptErr && (ptCount ?? 0) === 0) {
+        console.warn('[supabase] incomplete seed detected (no patients) — re-seeding');
+        await pushDbToSupabase(db);
+      }
+    }
 
     const [clinics, doctors, staff, patients, appointments, queue, consultations, events, notifications, stats] =
       await Promise.all([
