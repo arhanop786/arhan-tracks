@@ -251,7 +251,10 @@ export async function pullFromSupabase(db: DB): Promise<boolean> {
         .eq('clinic_id', clinicId);
       if (!ptErr && (ptCount ?? 0) === 0) {
         console.warn('[supabase] incomplete seed detected (no patients) — re-seeding');
-        await pushDbToSupabase(db);
+        // Seed from the pristine demo builder, NOT the in-memory db: a
+        // visitor carrying an empty/half-wiped local snapshot would only
+        // re-push the same emptiness (upserts of nothing are no-ops).
+        await reseedSupabaseDemo();
       }
     }
 
